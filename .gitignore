@@ -1,0 +1,7 @@
+node_modules/
+server/node_modules/
+*.log
+.env
+server/src/db/younic.db
+server/src/db/younic.db-*
+.DS_Store

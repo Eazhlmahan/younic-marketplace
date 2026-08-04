@@ -1,0 +1,8 @@
+node_modules
+*.log
+.git
+.gitignore
+server/src/db/younic.db
+server/src/db/younic.db-*
+.DS_Store
+.env

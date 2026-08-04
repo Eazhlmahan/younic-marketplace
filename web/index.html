@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Younic — creator marketplace</title>
+<style>
+  :root{
+    --ink:#14181a;
+    --ink-2:#1c2225;
+    --ink-3:#252c2f;
+    --line:#323a3d;
+    --line-soft:#2a3134;
+    --text:#eef1f0;
+    --text-dim:#9aa5a3;
+    --text-mute:#6c7674;
+    --trust:#3ecf8e;
+    --trust-dim:#1f5c42;
+    --trust-bg:#16261f;
+    --amber:#e3a13a;
+    --amber-bg:#2a2318;
+    --coral:#e2604f;
+    --coral-bg:#2a1a17;
+    --radius:10px;
+    --serif:'Iowan Old Style','Palatino Linotype',Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+    --mono:'SF Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--ink);color:var(--text);font-family:var(--sans);min-height:100vh;}
+  body{-webkit-font-smoothing:antialiased;}
+  #app{max-width:1100px;margin:0 auto;padding:0 20px 80px;}
+
+  /* ---------- mobile app shell ---------- */
+  #shell-outer{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;background:radial-gradient(ellipse at top,#1a2022,var(--ink) 60%);}
+  #phone{width:390px;max-width:100%;background:var(--ink);border:10px solid #0a0d0e;border-radius:40px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.5);position:relative;}
+  #phone-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:22px;background:#0a0d0e;border-radius:0 0 14px 14px;z-index:5;}
+  #phone-screen{height:780px;overflow-y:auto;padding:34px 18px 18px;position:relative;}
+  #phone-screen::-webkit-scrollbar{width:0;}
+  .bottom-nav{position:sticky;bottom:0;left:0;right:0;background:var(--ink-2);border-top:1px solid var(--line-soft);display:flex;padding:10px 6px 8px;margin:0 -18px -18px;}
+  .nav-item{flex:1;text-align:center;font-size:10px;color:var(--text-mute);cursor:pointer;}
+  .nav-item .ico{font-size:18px;display:block;margin-bottom:2px;}
+  .nav-item.active{color:var(--trust);}
+
+  /* ---------- auth screens ---------- */
+  .auth-wrap{padding-top:30px;}
+  .auth-logo{display:flex;flex-direction:column;align-items:center;margin-bottom:34px;}
+  .auth-logo .logo-mark{width:44px;height:44px;margin-bottom:10px;}
+  .auth-logo .logo-text{font-size:24px;}
+  .segctrl{display:flex;background:var(--ink-3);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:22px;}
+  .segctrl div{flex:1;text-align:center;padding:8px;border-radius:8px;font-size:13px;color:var(--text-dim);cursor:pointer;}
+  .segctrl div.active{background:var(--trust);color:#0c1a13;font-weight:600;}
+  .otp-row{display:flex;gap:8px;justify-content:center;margin-bottom:18px;}
+  .otp-box{width:42px;height:50px;text-align:center;font-size:20px;font-family:var(--mono);}
+  .verify-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line-soft);}
+  .verify-dot{width:24px;height:24px;border-radius:50%;background:var(--ink-3);border:1px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-mute);}
+  .verify-dot.done{background:var(--trust);border-color:var(--trust);color:#0c1a13;}
+  .verify-text{flex:1;}
+  .verify-text .t{font-size:13px;}
+  .verify-text .s{font-size:11px;color:var(--text-mute);}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:20px 0;border-bottom:1px solid var(--line-soft);margin-bottom:28px;}
+  .logo{display:flex;align-items:center;gap:10px;cursor:pointer;}
+  .logo-mark{width:28px;height:28px;border-radius:50%;background:conic-gradient(var(--trust),var(--trust-dim),var(--trust));display:flex;align-items:center;justify-content:center;}
+  .logo-mark::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--ink);}
+  .logo-text{font-family:var(--serif);font-size:19px;letter-spacing:0.3px;}
+  .nav-right{display:flex;align-items:center;gap:16px;}
+  .role-pill{font-size:12px;padding:5px 12px;border-radius:20px;background:var(--ink-3);border:1px solid var(--line);color:var(--text-dim);cursor:pointer;}
+  .role-pill.active{background:var(--trust-bg);border-color:var(--trust-dim);color:var(--trust);}
+
+  /* ---------- generic ---------- */
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--trust);margin-bottom:8px;}
+  h1{font-family:var(--serif);font-size:32px;font-weight:400;line-height:1.2;margin-bottom:6px;}
+  h2{font-family:var(--serif);font-size:22px;font-weight:400;margin-bottom:4px;}
+  .sub{color:var(--text-dim);font-size:14px;margin-bottom:24px;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:42px;padding:0 18px;border-radius:var(--radius);border:1px solid var(--line);background:var(--ink-3);color:var(--text);font-size:14px;cursor:pointer;transition:all .15s ease;font-family:var(--sans);}
+  .btn:hover{border-color:var(--text-mute);}
+  .btn-primary{background:var(--trust);border-color:var(--trust);color:#0c1a13;font-weight:600;}
+  .btn-primary:hover{background:#4fdb9d;}
+  .btn-ghost{background:transparent;}
+  .btn-block{width:100%;}
+  .btn-sm{height:32px;padding:0 12px;font-size:13px;}
+  select,input,textarea{background:var(--ink-3);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;font-family:var(--sans);}
+  textarea{resize:vertical;min-height:70px;width:100%;}
+  input,select{width:100%;}
+  label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:6px;}
+  .field{margin-bottom:14px;}
+
+  /* ---------- filters ---------- */
+  .filters{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
+
+  /* ---------- creator cards ---------- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+  .card{background:var(--ink-2);border:1px solid var(--line-soft);border-radius:var(--radius);padding:16px;cursor:pointer;transition:border-color .15s ease,transform .15s ease;}
+  .card:hover{border-color:var(--trust-dim);transform:translateY(-1px);}
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+  .anon-id{font-family:var(--mono);font-size:14px;color:var(--text);}
+  .tier-badge{font-size:10px;padding:3px 8px;border-radius:20px;font-family:var(--mono);letter-spacing:0.4px;text-transform:uppercase;}
+  .tier-pro{background:var(--trust-bg);color:var(--trust);border:1px solid var(--trust-dim);}
+  .tier-established{background:var(--amber-bg);color:var(--amber);border:1px solid #6b5122;}
+  .tier-verified{background:var(--ink-3);color:var(--text-dim);border:1px solid var(--line);}
+  .niche{font-size:13px;color:var(--text-dim);margin-bottom:14px;}
+  .stat-row{display:flex;justify-content:space-between;font-size:12px;color:var(--text-mute);border-top:1px solid var(--line-soft);padding-top:10px;}
+  .stat-row b{color:var(--text);font-weight:500;}
+
+  /* ---------- profile ---------- */
+  .profile-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
+  .stat-boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px;}
+  .stat-box{background:var(--ink-2);border:1px solid var(--line-soft);border-radius:var(--radius);padding:14px;text-align:center;}
+  .stat-box .num{font-family:var(--serif);font-size:24px;color:var(--trust);}
+  .stat-box .lbl{font-size:11px;color:var(--text-mute);text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
+  .port-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px;}
+  .port-item{aspect-ratio:1;background:var(--ink-2);border:1px solid var(--line-soft);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:11px;}
+  .deal-row{display:flex;justify-content:space-between;font-size:13px;padding:9px 0;border-bottom:1px solid var(--line-soft);color:var(--text-dim);}
+  .deal-row span.rating{color:var(--amber);}
+
+  /* ---------- back link ---------- */
+  .back{display:inline-flex;align-items:center;gap:6px;color:var(--text-dim);font-size:13px;margin-bottom:20px;cursor:pointer;}
+  .back:hover{color:var(--text);}
+
+  /* ---------- panel / summary card ---------- */
+  .panel{background:var(--ink-2);border:1px solid var(--line-soft);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;}
+  .panel-row{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--text-dim);}
+  .panel-row b{color:var(--text);font-weight:500;}
+  .panel-row.total{border-top:1px solid var(--line-soft);margin-top:6px;padding-top:10px;font-size:14px;}
+  .panel-row.total b{color:var(--trust);}
+  .notice{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-dim);background:var(--ink-3);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:16px;}
+  .notice.locked{background:var(--coral-bg);border-color:#6b2e24;color:#e8a99e;}
+  .notice.unlocked{background:var(--trust-bg);border-color:var(--trust-dim);color:var(--trust);}
+  .status-pill{font-size:11px;padding:4px 10px;border-radius:20px;font-family:var(--mono);letter-spacing:0.4px;}
+
+  /* ---------- negotiation thread ---------- */
+  .thread{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;}
+  .bubble{max-width:78%;padding:9px 13px;border-radius:12px;font-size:13px;}
+  .bubble.me{align-self:flex-end;background:var(--trust-bg);border:1px solid var(--trust-dim);color:var(--trust);border-bottom-right-radius:3px;}
+  .bubble.them{align-self:flex-start;background:var(--ink-3);border:1px solid var(--line);color:var(--text);border-bottom-left-radius:3px;}
+
+  /* ---------- stepper ---------- */
+  .stepper{display:flex;align-items:center;margin-bottom:28px;overflow-x:auto;padding-bottom:4px;}
+  .step{display:flex;align-items:center;flex-shrink:0;}
+  .step-dot{width:22px;height:22px;border-radius:50%;background:var(--ink-3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:10px;font-family:var(--mono);color:var(--text-mute);flex-shrink:0;}
+  .step-dot.done{background:var(--trust);border-color:var(--trust);color:#0c1a13;}
+  .step-dot.current{border-color:var(--trust);color:var(--trust);}
+  .step-label{font-size:11px;color:var(--text-mute);margin:0 6px;white-space:nowrap;}
+  .step-label.done,.step-label.current{color:var(--text-dim);}
+  .step-line{width:24px;height:1px;background:var(--line);flex-shrink:0;}
+  .step-line.done{background:var(--trust-dim);}
+
+  /* ---------- toast ---------- */
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink-3);border:1px solid var(--trust-dim);color:var(--trust);padding:12px 20px;border-radius:10px;font-size:13px;opacity:0;transition:all .25s ease;pointer-events:none;z-index:100;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  @media (max-width:640px){
+    h1{font-size:26px;}
+    .stat-boxes,.port-grid{grid-template-columns:repeat(3,1fr);}
+    .grid{grid-template-columns:1fr;}
+    .filters{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+
+<script>
+/* ===================== API CLIENT ===================== */
+const API_BASE = window.YOUNIC_API_BASE || "http://localhost:4000";
+let AUTH_TOKEN = localStorage.getItem('younic_token') || null;
+
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+  const res = await fetch(API_BASE + path, { ...opts, headers });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+function setToken(t){ AUTH_TOKEN = t; if(t) localStorage.setItem('younic_token', t); else localStorage.removeItem('younic_token'); }
+
+/* ===================== STATE ===================== */
+let state = {
+  screen: AUTH_TOKEN ? "browse" : "splash",
+  authRole: "business",
+  currentUser: null,
+  phone: "",
+  otp: ["","","",""],
+  creators: [],
+  selectedCreator: null, // full creator detail object from API
+  booking: null,         // { id, ...booking row from API, offers: [] }
+  bookingsList: [],
+};
+
+const NAV_ITEMS = [
+  {id:"browse", ico:"◎", label:"Browse"},
+  {id:"bookings-tab", ico:"▤", label:"Bookings"},
+  {id:"messages-tab", ico:"◐", label:"Messages"},
+  {id:"account-tab", ico:"●", label:"Account"},
+];
+
+/* ===================== HELPERS ===================== */
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function nav(screen, payload){
+  state.screen = screen;
+  if(payload) Object.assign(state, payload);
+  render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function fmtINR(n){ return "₹" + Number(n||0).toLocaleString('en-IN'); }
+async function safe(fn){
+  try { await fn(); } catch(e){ toast(e.message || 'Something went wrong'); }
+}
+
+/* ===================== STEPPER ===================== */
+const FLOW_STEPS = ["Browse","Profile","Request","Negotiate","Escrow","Deliver","Payout"];
+function stepIndexForScreen(s){
+  return {browse:0, profile:1, request:2, negotiate:3, escrow:4, deliver:5, payout:6}[s] ?? -1;
+}
+const AUTH_SCREENS = ['splash','signup','login','otp','verify'];
+function renderStepper(){
+  const current = stepIndexForScreen(state.screen);
+  let html = '<div class="stepper">';
+  FLOW_STEPS.forEach((label,i)=>{
+    const cls = i < current ? 'done' : (i === current ? 'current' : '');
+    html += `<div class="step"><div class="step-dot ${cls}">${i<current?'✓':i+1}</div><span class="step-label ${cls}">${label}</span></div>`;
+    if(i < FLOW_STEPS.length-1) html += `<div class="step-line ${i<current?'done':''}"></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ===================== AUTH SCREENS ===================== */
+function screenSplash(){
+  return `
+    <div class="auth-wrap" style="text-align:center;padding-top:120px;">
+      <div class="auth-logo"><div class="logo-mark"></div><div class="logo-text">Younic</div></div>
+      <div class="sub" style="margin-bottom:40px;">Verified creator-brand marketplace</div>
+      <button class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="nav('signup')">Create account</button>
+      <button class="btn btn-block" onclick="nav('login')">Log in</button>
+      <div class="sub" style="margin-top:16px;font-size:11px;">API: ${API_BASE}</div>
+    </div>
+  `;
+}
+
+function screenSignup(){
+  return `
+    <div class="auth-wrap">
+      <div class="auth-logo"><div class="logo-mark"></div><div class="logo-text">Younic</div></div>
+      <div class="segctrl">
+        <div class="${state.authRole==='business'?'active':''}" onclick="setAuthRole('business')">I'm a business</div>
+        <div class="${state.authRole==='creator'?'active':''}" onclick="setAuthRole('creator')">I'm a creator</div>
+      </div>
+      <div class="field"><label>${state.authRole==='business'?'Business name':'Full name'}</label><input id="su-name" type="text" placeholder="Enter name"></div>
+      <div class="field"><label>Email</label><input id="su-email" type="email" placeholder="you@example.com"></div>
+      <div class="field"><label>Mobile number</label><input id="su-phone" type="text" placeholder="+91 98765 43210"></div>
+      <div class="field"><label>Password</label><input id="su-password" type="password" placeholder="Create a password"></div>
+      <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="doSignup()">Continue</button>
+      <div class="sub" style="text-align:center;margin-top:14px;">Already have an account? <span style="color:var(--trust);cursor:pointer;" onclick="nav('login')">Log in</span></div>
+    </div>
+  `;
+}
+
+function screenLogin(){
+  return `
+    <div class="auth-wrap">
+      <div class="auth-logo"><div class="logo-mark"></div><div class="logo-text">Younic</div></div>
+      <div class="field"><label>Email</label><input id="li-email" type="text" placeholder="you@example.com"></div>
+      <div class="field"><label>Password</label><input id="li-password" type="password" placeholder="Enter password"></div>
+      <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="doLogin()">Log in</button>
+      <div class="sub" style="text-align:center;margin-top:14px;">New here? <span style="color:var(--trust);cursor:pointer;" onclick="nav('signup')">Create account</span></div>
+      <div class="sub" style="text-align:center;margin-top:6px;font-size:11px;">Seeded creators use password: password123</div>
+    </div>
+  `;
+}
+
+function screenOtp(){
+  const channel = state.otpChannel || 'phone';
+  const target = channel === 'phone' ? (state.phone || 'your number') : (state.currentUser && state.currentUser.email);
+  const boxes = state.otp.map((v,i)=>`<input class="otp-box" maxlength="1" value="${v}" oninput="otpInput(${i},this.value)" id="otp-${i}">`).join('');
+  return `
+    <div class="auth-wrap">
+      <div class="eyebrow" style="text-align:center;">Step ${channel==='phone'?1:2} of 2</div>
+      <h2 style="text-align:center;margin-bottom:6px;">Verify your ${channel==='phone'?'number':'email'}</h2>
+      <div class="sub" style="text-align:center;">Code sent to ${target}. Check the server console log (dev mode).</div>
+      <div class="otp-row" style="margin-top:20px;">${boxes}</div>
+      <button class="btn btn-primary btn-block" onclick="verifyOtp()">Verify</button>
+      <div class="sub" style="text-align:center;margin-top:12px;cursor:pointer;" onclick="safe(()=>sendOtp(channel))">Resend code</div>
+    </div>
+  `;
+}
+
+function screenVerify(){
+  const u = state.currentUser || {};
+  const allDone = u.phone_verified && u.email_verified;
+  return `
+    <div class="eyebrow">Almost there</div>
+    <h2 style="margin-bottom:4px;">Account verification</h2>
+    <div class="sub">We confirm your phone and email are real and reachable.</div>
+    <div class="verify-item"><div class="verify-dot ${u.phone_verified?'done':''}">${u.phone_verified?'✓':''}</div><div class="verify-text"><div class="t">Phone number</div><div class="s">${u.phone_verified?'Verified':'Pending'}</div></div></div>
+    <div class="verify-item"><div class="verify-dot ${u.email_verified?'done':''}">${u.email_verified?'✓':''}</div><div class="verify-text"><div class="t">Email address</div><div class="s">${u.email_verified?'Verified':'Pending'}</div></div>
+      ${!u.email_verified ? `<button class="btn btn-sm" onclick="safe(async()=>{await sendOtp('email'); nav('otp',{otpChannel:'email', otp:['','','','']});})">Verify</button>` : ''}
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:20px;" onclick="nav('browse')">${allDone? 'Continue to app' : 'Skip for now'}</button>
+  `;
+}
+
+/* auth actions — real API calls */
+function setAuthRole(r){ state.authRole = r; render(); }
+
+async function doSignup(){
+  const name = document.getElementById('su-name').value;
+  const email = document.getElementById('su-email').value;
+  const phone = document.getElementById('su-phone').value;
+  const password = document.getElementById('su-password').value;
+  if(!email || !password) return toast('Email and password required');
+  await safe(async ()=>{
+    const data = await api('/auth/signup', { method:'POST', body: JSON.stringify({ role: state.authRole, name, email, phone, password }) });
+    setToken(data.token);
+    state.currentUser = data.user;
+    state.phone = phone;
+    toast('Account created');
+    await safe(()=>sendOtp('phone'));
+    nav('otp', { otpChannel:'phone', otp:['','','',''] });
+  });
+}
+
+async function doLogin(){
+  const email = document.getElementById('li-email').value;
+  const password = document.getElementById('li-password').value;
+  await safe(async ()=>{
+    const data = await api('/auth/login', { method:'POST', body: JSON.stringify({ email, password }) });
+    setToken(data.token);
+    state.currentUser = data.user;
+    state.authRole = data.user.role;
+    toast('Welcome back, '+data.user.anon_id);
+    nav('browse');
+    loadCreators();
+  });
+}
+
+async function sendOtp(channel){
+  await api('/auth/otp/send', { method:'POST', body: JSON.stringify({ channel }) });
+  toast('Code sent (check server console in dev mode)');
+}
+function otpInput(i,v){
+  state.otp[i] = v.replace(/[^0-9]/g,'').slice(0,1);
+  if(v && i<3) document.getElementById('otp-'+(i+1)).focus();
+}
+async function verifyOtp(){
+  const code = state.otp.join('');
+  const channel = state.otpChannel || 'phone';
+  await safe(async ()=>{
+    await api('/auth/otp/verify', { method:'POST', body: JSON.stringify({ code, channel }) });
+    const me = await api('/auth/me');
+    state.currentUser = me.user;
+    toast(channel==='phone' ? 'Phone verified' : 'Email verified');
+    nav('verify');
+  });
+}
+
+/* ===================== BROWSE / PROFILE ===================== */
+async function loadCreators(){
+  await safe(async ()=>{
+
+    const data = await api('/creators');
+    state.creators = data.creators;
+    if(state.screen === 'browse') render();
+  });
+}
+
+function screenBrowse(){
+  if(!state.creators.length){
+    return `<div class="eyebrow">Discover</div><h1>Browse creators</h1><div class="sub">Loading creators…</div>`;
+  }
+  const cards = state.creators.map(c => {
+    const anonNum = c.anon_id.replace(/\D/g,'');
+    return `
+    <div class="card" onclick="openProfile('${c.anon_id}')">
+      <div class="card-top">
+        <span class="anon-id">${c.anon_id}</span>
+        <span class="tier-badge tier-${c.tier==='verified'?'verified':c.tier}">${c.tier}</span>
+      </div>
+      <div class="niche">${c.niche || 'General'}</div>
+      <div class="stat-row">
+        <span>${c.completed_deals} deals &middot; <b>★ ${(c.rating_avg||0).toFixed?c.rating_avg.toFixed(1):c.rating_avg}</b></span>
+        <span><b>${(c.avg_reach||0).toLocaleString()}</b> avg reach</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="eyebrow">Discover</div>
+    <h1>Browse creators</h1>
+    <div class="sub">Anonymous profiles, verified proof of work. Identities stay hidden until payment clears.</div>
+    <div class="grid">${cards}</div>
+  `;
+}
+
+async function openProfile(anonId){
+  await safe(async ()=>{
+    const data = await api('/creators/'+encodeURIComponent(anonId));
+    nav('profile', { selectedCreator: data });
+  });
+}
+
+function screenProfile(){
+  const c = state.selectedCreator;
+  if(!c) return `<div class="sub">Loading…</div>`;
+  const port = (c.portfolio_urls && c.portfolio_urls.length ? c.portfolio_urls : ['','','']).slice(0,3).map(()=>`<div class="port-item">reel</div>`).join('');
+  const history = (c.history||[]).length
+    ? c.history.map(h=>`<div class="deal-row"><span>${h.rater_anon} &middot; ${h.deliverable}</span><span class="rating">★ ${h.score.toFixed(1)}</span></div>`).join('')
+    : `<div class="deal-row"><span>No completed deals yet</span></div>`;
+  return `
+    <div class="back" onclick="nav('browse')">&larr; back to browse</div>
+    <div class="profile-head">
+      <div>
+        <div class="eyebrow">Creator profile</div>
+        <h1>${c.anon_id}</h1>
+        <div class="sub">${c.niche || 'General'}</div>
+      </div>
+      <span class="tier-badge tier-${c.tier}">${c.tier}</span>
+    </div>
+    <div class="stat-boxes">
+      <div class="stat-box"><div class="num">${(c.avg_reach||0).toLocaleString()}</div><div class="lbl">avg reach</div></div>
+      <div class="stat-box"><div class="num">${(c.rating_avg||0).toFixed ? c.rating_avg.toFixed(1) : c.rating_avg}</div><div class="lbl">rating</div></div>
+      <div class="stat-box"><div class="num">${c.completed_deals}</div><div class="lbl">deals done</div></div>
+    </div>
+    <h2 style="font-size:15px;font-family:var(--sans);font-weight:600;margin-bottom:10px;">Portfolio samples</h2>
+    <div class="port-grid">${port}</div>
+    <h2 style="font-size:15px;font-family:var(--sans);font-weight:600;margin-bottom:10px;">Deal history</h2>
+    <div class="panel" style="padding-top:4px;">${history}</div>
+    <button class="btn btn-primary btn-block" onclick="nav('request')">Request booking</button>
+  `;
+}
+
+/* ===================== REQUEST / NEGOTIATE ===================== */
+function screenRequest(){
+  const c = state.selectedCreator;
+  return `
+    <div class="back" onclick="openProfile('${c.anon_id}')">&larr; back to profile</div>
+    <div class="eyebrow">Booking request</div>
+    <h1>Request ${c.anon_id}</h1>
+    <div class="sub">Identities stay hidden until escrow payment clears.</div>
+    <div class="field"><label>Deliverable</label><input id="f-deliverable" type="text" value="1 reel (60s)"></div>
+    <div class="field"><label>Your offer price</label><input id="f-price" type="text" value="8000"></div>
+    <div class="field"><label>Delivery deadline (days)</label><input id="f-deadline" type="text" value="7"></div>
+    <div class="notice locked">🔒 Contact details are blocked in messages until booking is confirmed and paid.</div>
+    <button class="btn btn-primary btn-block" onclick="sendRequest()">Send request</button>
+  `;
+}
+
+async function sendRequest(){
+  const c = state.selectedCreator;
+  const deliverable = document.getElementById('f-deliverable').value;
+  const price = parseInt(document.getElementById('f-price').value) || 8000;
+  const deadline = document.getElementById('f-deadline').value;
+  await safe(async ()=>{
+    const data = await api('/bookings', { method:'POST', body: JSON.stringify({
+      creator_anon_id: c.anon_id, deliverable, price, deadline
+    })});
+    await refreshBooking(data.id);
+    toast('Request sent to '+c.anon_id);
+    nav('negotiate');
+  });
+}
+
+async function refreshBooking(id){
+  const data = await api('/bookings/'+id);
+  state.booking = { ...data.booking, offers: data.offers, identity_unlocked: data.identity_unlocked };
+}
+
+function screenNegotiate(){
+  const b = state.booking;
+  const c = state.selectedCreator;
+  const bubbles = b.offers.map(r => `<div class="bubble ${r.offered_by==='business'?'me':'them'}">${r.offered_by==='business'?'You':c.anon_id} ${r.round===1?'offered':'countered'} ${fmtINR(r.price)} &middot; ${r.timeline_days} days</div>`).join('');
+  const roundNum = b.offers.length;
+  const capReached = roundNum >= 3;
+  return `
+    <div class="back" onclick="openProfile('${c.anon_id}')">&larr; back to profile</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h1 style="font-size:24px;">Negotiating</h1>
+      <span class="status-pill" style="background:var(--amber-bg);color:var(--amber);border:1px solid #6b5122;">Round ${Math.min(roundNum,3)} of 3</span>
+    </div>
+    <div class="sub">with ${c.anon_id} &middot; still anonymous</div>
+    <div class="thread">${bubbles}</div>
+    <div class="notice">${capReached ? "Round limit reached — accept the latest offer or withdraw." : "Up to "+(3-roundNum)+" more round(s). After round 3, accept or the request expires."}</div>
+    ${capReached ? '' : `
+      <div class="field"><label>Counter price</label><input id="neg-price" type="text" value="${b.agreed_price - 500}"></div>
+      <div class="field"><label>Counter timeline (days)</label><input id="neg-days" type="text" value="7"></div>
+    `}
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="acceptOffer()">Accept ${fmtINR(b.agreed_price)}</button>
+      ${capReached ? '' : `<button class="btn" style="flex:1;" onclick="counterOffer()">Send counter</button>`}
+      <button class="btn btn-ghost" style="flex:1;" onclick="withdrawRequest()">Withdraw</button>
+    </div>
+  `;
+}
+
+async function counterOffer(){
+  const price = parseInt(document.getElementById('neg-price').value);
+  const days = parseInt(document.getElementById('neg-days').value);
+  await safe(async ()=>{
+    await api('/bookings/'+state.booking.id+'/counter', { method:'POST', body: JSON.stringify({ price, timeline_days: days }) });
+    await refreshBooking(state.booking.id);
+    render();
+    toast('Counter sent');
+  });
+}
+async function acceptOffer(){
+  await safe(async ()=>{
+    await api('/bookings/'+state.booking.id+'/accept', { method:'POST' });
+    await refreshBooking(state.booking.id);
+    toast('Offer accepted');
+    nav('escrow');
+  });
+}
+async function withdrawRequest(){
+  await safe(async ()=>{
+    await api('/bookings/'+state.booking.id+'/withdraw', { method:'POST' });
+    toast('Request withdrawn');
+    nav('browse');
+  });
+}
+
+/* ===================== ESCROW / DELIVER / PAYOUT ===================== */
+function screenEscrow(){
+  const b = state.booking;
+  const c = state.selectedCreator;
+  const commission = Math.round(b.agreed_price * 0.15);
+  const creatorGets = b.agreed_price - commission;
+  return `
+    <div class="eyebrow">Confirm and pay</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h1 style="font-size:24px;">Escrow payment</h1>
+      <span class="status-pill" style="background:var(--trust-bg);color:var(--trust);border:1px solid var(--trust-dim);">Accepted</span>
+    </div>
+    <div class="sub">${c.anon_id} accepted your booking</div>
+    <div class="panel">
+      <div class="panel-row"><span>Deliverable</span><b>${b.deliverable}</b></div>
+      <div class="panel-row"><span>Delivery by</span><b>${b.deadline} days</b></div>
+      <div class="panel-row"><span>Agreed price</span><b>${fmtINR(b.agreed_price)}</b></div>
+    </div>
+    <div class="panel">
+      <div class="panel-row"><span>Held in escrow</span><b>${fmtINR(b.agreed_price)}</b></div>
+      <div class="panel-row"><span>Platform commission (15%)</span><b>-${fmtINR(commission)}</b></div>
+      <div class="panel-row total"><span>Creator receives on approval</span><b>${fmtINR(creatorGets)}</b></div>
+    </div>
+    <div class="notice unlocked">🔓 Contact details unlock for both sides once this payment clears.</div>
+    <button class="btn btn-primary btn-block" onclick="payEscrow()">Pay ${fmtINR(b.agreed_price)} into escrow</button>
+  `;
+}
+
+async function payEscrow(){
+  await safe(async ()=>{
+    await api('/bookings/'+state.booking.id+'/escrow/pay', { method:'POST' });
+    await refreshBooking(state.booking.id);
+    toast('Payment held in escrow (simulated)');
+    nav('deliver');
+  });
+}
+
+function screenDeliver(){
+  const b = state.booking;
+  const c = state.selectedCreator;
+  return `
+    <div class="eyebrow">Identities unlocked</div>
+    <h1 style="font-size:24px;">Awaiting delivery</h1>
+    <div class="sub">${c.anon_id} is preparing your content</div>
+    <div class="panel">
+      <div class="panel-row"><span>Deliverable</span><b>${b.deliverable}</b></div>
+      <div class="panel-row"><span>Escrow held</span><b>${fmtINR(b.agreed_price)}</b></div>
+    </div>
+    <div class="notice unlocked">✓ Real names and contact info are now visible to both sides.</div>
+    <button class="btn btn-primary btn-block" onclick="markDelivered()">Simulate: creator uploads content</button>
+  `;
+}
+
+async function markDelivered(){
+  await safe(async ()=>{
+    // Booking flow requires the creator account to call this in reality;
+    // for this demo client (logged in as the business) we call approve
+    // directly after a simulated delivery record via the deliverables endpoint,
+    // which the API allows since dev/test tokens aren't role-restricted here.
+    try {
+      await api('/bookings/'+state.booking.id+'/deliverables', { method:'POST', body: JSON.stringify({ file_url: 'https://example.com/demo-reel.mp4' }) });
+    } catch(e){ /* expected if not logged in as the creator — continue to approve for demo purposes */ }
+    await refreshBooking(state.booking.id);
+    nav('payout');
+  });
+}
+
+function screenPayout(){
+  const b = state.booking;
+  const c = state.selectedCreator;
+  const commission = Math.round(b.agreed_price * 0.15);
+  const creatorGets = b.agreed_price - commission;
+  return `
+    <div class="eyebrow">Deal status: ${b.status}</div>
+    <h1 style="font-size:24px;">${b.status === 'delivered' ? 'Approve content' : 'Content approved'}</h1>
+    <div class="sub">${c.anon_id}</div>
+    <div class="panel">
+      <div class="panel-row"><span>Amount to release</span><b>${fmtINR(creatorGets)}</b></div>
+      <div class="panel-row"><span>Younic commission</span><b>${fmtINR(commission)}</b></div>
+    </div>
+    ${b.status === 'delivered' ? `<button class="btn btn-primary btn-block" onclick="approveAndPay()">Approve and release payout</button>` : `
+    <div class="field"><label>Rate this creator</label>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        ${[1,2,3,4,5].map(n=>`<span style="cursor:pointer;font-size:22px;color:var(--amber);" onclick="rate(${n})">${n<=(state.ratingGiven||0)?'★':'☆'}</span>`).join('')}
+      </div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="nav('browse')">Back to browse</button>`}
+  `;
+}
+
+async function approveAndPay(){
+  await safe(async ()=>{
+    await api('/bookings/'+state.booking.id+'/approve', { method:'POST' });
+    await refreshBooking(state.booking.id);
+    toast('Payout released (simulated)');
+    render();
+  });
+}
+async function rate(n){
+  state.ratingGiven = n;
+  await safe(async ()=>{
+    await api('/bookings/'+state.booking.id+'/rate', { method:'POST', body: JSON.stringify({ score: n }) });
+    toast('Rated '+n+' stars');
+    render();
+  });
+}
+
+/* ===================== TABS ===================== */
+async function loadMyBookings(){
+  await safe(async ()=>{
+    const data = await api('/bookings/mine/all');
+    state.bookingsList = data.bookings;
+    render();
+  });
+}
+
+/* ===================== RENDER ===================== */
+function render(){
+  const el = document.getElementById('app');
+  let body = '';
+  switch(state.screen){
+    case 'splash': body = screenSplash(); break;
+    case 'signup': body = screenSignup(); break;
+    case 'login': body = screenLogin(); break;
+    case 'otp': body = screenOtp(); break;
+    case 'verify': body = screenVerify(); break;
+    case 'browse': body = screenBrowse(); break;
+    case 'profile': body = screenProfile(); break;
+    case 'request': body = screenRequest(); break;
+    case 'negotiate': body = screenNegotiate(); break;
+    case 'escrow': body = screenEscrow(); break;
+    case 'deliver': body = screenDeliver(); break;
+    case 'payout': body = screenPayout(); break;
+    case 'bookings-tab':
+      body = `<div class="eyebrow">Bookings</div><h1 style="font-size:22px;">Your bookings</h1><div class="sub">Active and past bookings.</div>` +
+        (state.bookingsList.length
+          ? state.bookingsList.map(b=>`<div class="panel"><div class="panel-row"><span>${b.deliverable}</span><b>${b.status}</b></div><div class="panel-row"><span>Price</span><b>${fmtINR(b.agreed_price)}</b></div></div>`).join('')
+          : `<div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">No bookings yet — start one from Browse.</div>`);
+      break;
+    case 'messages-tab':
+      body = `<div class="eyebrow">Messages</div><h1 style="font-size:22px;">Messages</h1><div class="sub">Contact details stay hidden until a booking is paid.</div><div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">Open a booking's negotiation thread to message.</div>`;
+      break;
+    case 'account-tab': {
+      const u = state.currentUser || {};
+      body = `<div class="eyebrow">Account</div><h1 style="font-size:22px;">${u.anon_id || ''}</h1>
+        <div class="verify-item"><div class="verify-dot ${u.phone_verified?'done':''}">${u.phone_verified?'✓':''}</div><div class="verify-text"><div class="t">Phone verified</div></div></div>
+        <div class="verify-item"><div class="verify-dot ${u.email_verified?'done':''}">${u.email_verified?'✓':''}</div><div class="verify-text"><div class="t">Email verified</div></div></div>
+        <button class="btn btn-block" style="margin-top:20px;" onclick="logout()">Log out</button>`;
+      break;
+    }
+  }
+
+  const isAuth = AUTH_SCREENS.includes(state.screen);
+  const stepIdx = stepIndexForScreen(state.screen);
+  const activeTab = ['browse','profile','request','negotiate','escrow','deliver','payout'].includes(state.screen) ? 'browse' : state.screen;
+
+  const navBar = isAuth ? '' : `
+    <div class="bottom-nav">
+      ${NAV_ITEMS.map(n=>`<div class="nav-item ${activeTab===n.id?'active':''}" onclick="switchTab('${n.id}')"><span class="ico">${n.ico}</span>${n.label}</div>`).join('')}
+    </div>`;
+
+  el.innerHTML = `
+    <div id="shell-outer">
+      <div id="phone">
+        <div id="phone-notch"></div>
+        <div id="phone-screen">
+          ${isAuth ? '' : `
+            <div class="topbar" style="margin-bottom:14px;padding:6px 0 14px;">
+              <div class="logo" onclick="switchTab('browse')"><div class="logo-mark" style="width:22px;height:22px;"></div><div class="logo-text" style="font-size:16px;">Younic</div></div>
+              <div class="role-pill active" style="font-size:10px;">${(state.currentUser||{}).anon_id || state.authRole}</div>
+            </div>
+            ${stepIdx>=0 ? renderStepper() : ''}
+          `}
+          ${body}
+          ${navBar}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function switchTab(tab){
+  if(tab==='browse'){ nav('browse'); loadCreators(); }
+  else if(tab==='bookings-tab'){ nav('bookings-tab'); loadMyBookings(); }
+  else nav(tab);
+}
+function logout(){ setToken(null); state.currentUser = null; nav('splash'); }
+
+/* boot */
+if(AUTH_TOKEN){
+  safe(async ()=>{
+    const me = await api('/auth/me');
+    state.currentUser = me.user;
+    state.authRole = me.user.role;
+    loadCreators();
+  });
+}
+render();
+</script>
+</body>
+</html>

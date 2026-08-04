@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: younic
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    disk:
+      name: younic-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_PATH
+        value: /data/younic.db
+      - key: SEED_ON_START
+        value: "true"
+      - key: PORT
+        value: "4000"
