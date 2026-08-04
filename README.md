@@ -46,3 +46,24 @@ web/      Static HTML/CSS/JS client, calls the API via fetch()
    deployment.
 5. Wrap the web client in React Native (or Capacitor, for a faster port of this exact HTML/JS) to
    get an installable mobile app — that's a separate build, not a config flag.
+
+## Deploy (live URL)
+
+The repo is production-ready and pushed to GitHub: https://github.com/Eazhlmahan/younic-marketplace
+
+**Recommended: Railway (one click, free tier)**
+1. Log in at https://railway.app → **New Project** → **Deploy from GitHub repo**.
+2. Select `younic-marketplace`. Railway auto-detects `railway.json` (Dockerfile + persistent
+   volume + `/health` healthcheck) and deploys. No config needed.
+3. Open the generated URL like `https://younic-production.up.railway.app`.
+   Demo creators are seeded automatically — login any with `password: password123`.
+
+**Alternative: Render**
+1. New Web Service → connect the GitHub repo. `render.yaml` is auto-detected (Docker, persistent
+   disk at `/data`, healthcheck on `/health`).
+
+### What makes data survive deploys
+- `DATABASE_PATH` env → SQLite lives on a persistent volume (`/data`), not the ephemeral container.
+  Without this, every redeploy would wipe users/bookings.
+- `SEED_ON_START=true` seeds the 3 demo creators once on first boot (idempotent).
+- Docker ignores `server/src/db/younic.db*` so a fresh container starts from the volume only.
