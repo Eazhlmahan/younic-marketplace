@@ -12,7 +12,15 @@ const pw = bcrypt.hashSync('password123', 10);
 
 for (const c of creators) {
   const exists = db.prepare('SELECT id FROM users WHERE anon_id = ?').get(c.anon);
-  if (exists) continue;
+  if (exists) {
+    // Idempotent backfill: keep canonical demo creators' identity fields populated.
+    db.prepare(`UPDATE users SET real_name = ? WHERE anon_id = ? AND (real_name IS NULL OR real_name = '')`)
+      .run(c.name, c.anon);
+    db.prepare(`UPDATE creator_profiles SET social_handle = ?, verified_account_url = ?
+                WHERE user_id = ? AND (social_handle IS NULL OR social_handle = '')`)
+      .run(c.handle, c.url, exists.id);
+    continue;
+  }
   const id = uuid();
   db.prepare(`INSERT INTO users (id, role, anon_id, email, password_hash, real_name, phone_verified, email_verified, tier)
               VALUES (?, 'creator', ?, ?, ?, ?, 1, 1, ?)`)
