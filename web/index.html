@@ -165,7 +165,7 @@
 
 <script>
 /* ===================== API CLIENT ===================== */
-const API_BASE = window.YOUNIC_API_BASE || "http://localhost:4000";
+const API_BASE = window.YOUNIC_API_BASE || "";
 let AUTH_TOKEN = localStorage.getItem('younic_token') || null;
 
 async function api(path, opts = {}) {
