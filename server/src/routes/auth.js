@@ -102,10 +102,15 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 function publicUser(u) {
+  let social_handle = null, verified_account_url = null;
+  if (u.role === 'creator') {
+    const cp = db.prepare('SELECT social_handle, verified_account_url FROM creator_profiles WHERE user_id = ?').get(u.id);
+    if (cp) { social_handle = cp.social_handle; verified_account_url = cp.verified_account_url; }
+  }
   return {
     id: u.id, role: u.role, anon_id: u.anon_id, email: u.email, phone: u.phone,
     phone_verified: !!u.phone_verified, email_verified: !!u.email_verified,
-    tier: u.tier,
+    tier: u.tier, public_name: u.public_name, social_handle, verified_account_url,
   };
 }
 

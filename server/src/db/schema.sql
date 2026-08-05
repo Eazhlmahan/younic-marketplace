@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   password_hash TEXT NOT NULL,
   real_name TEXT,
+  public_name TEXT,
   phone_verified INTEGER DEFAULT 0,
   email_verified INTEGER DEFAULT 0,
   id_verified INTEGER DEFAULT 0,
@@ -21,7 +22,9 @@ CREATE TABLE IF NOT EXISTS creator_profiles (
   engagement_rate REAL DEFAULT 0,
   portfolio_urls TEXT DEFAULT '[]',
   completed_deals INTEGER DEFAULT 0,
-  rating_avg REAL DEFAULT 0
+  rating_avg REAL DEFAULT 0,
+  social_handle TEXT,
+  verified_account_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS business_profiles (

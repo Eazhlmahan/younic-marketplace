@@ -224,13 +224,34 @@ async function safe(fn){
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function isBusiness(){ return state.currentUser && state.currentUser.role === 'business'; }
 function isCreator(){ return state.currentUser && state.currentUser.role === 'creator'; }
-function counterparty(){
+function counterpartyInfo(){
   const b = state.booking, me = state.currentUser;
   if(!b || !me) return null;
-  return me.id === b.business_id ? (b.creator_anon || 'Creator') : (b.business_anon || 'Business');
+  const biz = me.id === b.business_id;
+  return {
+    anon: biz ? (b.creator_anon || 'Creator') : (b.business_anon || 'Business'),
+    name: biz ? (b.creator_name || '') : (b.business_name || ''),
+    handle: biz ? (b.creator_handle || '') : '',
+    verified_url: biz ? (b.creator_verified_url || '') : '',
+  };
+}
+function counterparty(){
+  const info = counterpartyInfo();
+  return info ? (info.name || info.anon) : null;
+}
+function partyLabel(){
+  const info = counterpartyInfo();
+  if(!info) return '';
+  const handle = info.handle ? ` <span style="color:var(--trust);font-size:12px;">${esc(info.handle)}</span>` : '';
+  return esc(info.name || info.anon) + handle;
+}
+function bookingPartyLabel(b){
+  const name = b.counterparty_name || b.counterparty_anon || 'Deal';
+  const handle = b.counterparty_handle ? ` <span style="color:var(--trust);font-size:11px;">${esc(b.counterparty_handle)}</span>` : '';
+  return esc(name) + handle;
 }
 function statusMeta(s){
-  const m = { negotiating:['Negotiating','amber'], confirmed:['Confirmed','amber'], identity_unlocked:['Identity unlocked','trust'], delivered:['Delivered','trust'], paid_out:['Paid out','trust'], disputed:['Disputed','coral'], refunded:['Withdrawn','mute'] };
+  const m = { negotiating:['Negotiating','amber'], confirmed:['Confirmed','amber'], identity_unlocked:['Escrow held','trust'], delivered:['Delivered','trust'], paid_out:['Paid out','trust'], disputed:['Disputed','coral'], refunded:['Withdrawn','mute'] };
   return m[s] || [s, 'mute'];
 }
 function pill(s){
@@ -483,7 +504,7 @@ function screenRequest(){
     <div class="field"><label>Deliverable</label><input id="f-deliverable" type="text" value="1 reel (60s)"></div>
     <div class="field"><label>Your offer price</label><input id="f-price" type="text" value="8000"></div>
     <div class="field"><label>Delivery deadline (days)</label><input id="f-deadline" type="text" value="7"></div>
-    <div class="notice locked">🔒 Contact details are blocked in messages until booking is confirmed and paid.</div>
+    <div class="notice locked">🔒 Phone, email and WhatsApp/Telegram handles are never shared — all communication and payment happens here.</div>
     <button class="btn btn-primary btn-block" onclick="sendRequest()">Send request</button>
   `;
 }
@@ -526,7 +547,7 @@ function screenNegotiate(){
       <h1 style="font-size:24px;">Negotiating</h1>
       ${pill(b.status)}
     </div>
-    <div class="sub">with ${esc(other)} &middot; still anonymous</div>
+    <div class="sub">with ${partyLabel()} &middot; contact stays private</div>
     <div class="thread">${bubbles || `<div class="sub">No offers yet.</div>`}</div>
     <div class="notice">${capReached ? "Round limit reached — accept the latest offer or withdraw." : "Up to "+(3-roundNum)+" more round(s). After round 3, accept or the request expires."}</div>
     ${capReached ? '' : `
@@ -591,7 +612,7 @@ function screenEscrow(){
       <div class="panel-row"><span>Platform commission (15%)</span><b>-${fmtINR(commission)}</b></div>
       <div class="panel-row total"><span>Creator receives on approval</span><b>${fmtINR(creatorGets)}</b></div>
     </div>
-    <div class="notice unlocked">🔓 Contact details unlock for both sides once this payment clears.</div>
+    <div class="notice">🔒 Contact details stay private — all communication and payment happens here, not on WhatsApp/Instagram DMs.</div>
     <button class="btn btn-primary btn-block" onclick="payEscrow()">Pay ${fmtINR(b.agreed_price)} into escrow</button>
   `;
 }
@@ -607,8 +628,7 @@ async function payEscrow(){
 
 function screenDeliver(){
   const b = state.booking;
-  const other = counterparty() || 'creator';
-  const unlocked = ['identity_unlocked','delivered','approved','paid_out'].includes(b.status);
+  const other = partyLabel();
   const creatorDelivered = ['delivered','approved','paid_out'].includes(b.status);
   let action = '';
   if(isCreator() && b.status === 'identity_unlocked'){
@@ -623,16 +643,16 @@ function screenDeliver(){
     action = `<div class="notice">⏳ Waiting for ${esc(other)} to upload content.</div>`;
   }
   return `
-    <div class="eyebrow">${unlocked?'Identities unlocked':'Deal progress'}</div>
+    <div class="eyebrow">Deal progress</div>
     <h1 style="font-size:24px;">Delivery</h1>
-    <div class="sub">${esc(other)} ${isBusiness()?'is preparing your content':'is working on this booking'}</div>
+    <div class="sub">${partyLabel()} ${isBusiness()?'is preparing your content':'is working on this booking'}</div>
     <div class="panel">
       <div class="panel-row"><span>Deliverable</span><b>${esc(b.deliverable)}</b></div>
       <div class="panel-row"><span>Status</span><b>${pill(b.status)}</b></div>
     </div>
-    ${unlocked ? `<div class="notice unlocked">✓ Real names and contact info are now visible to both sides.</div>` : ''}
+    <div class="notice">🔒 Contact details stay private — all communication and payment happens here, not on WhatsApp/Instagram DMs.</div>
     ${action}
-    <button class="btn btn-block" style="margin-top:10px;" onclick="revealContact()">Show contact details</button>
+    <button class="btn btn-block" style="margin-top:10px;" onclick="revealContact()">View verified identity</button>
     <div id="contact-box"></div>
   `;
 }
@@ -654,9 +674,10 @@ async function revealContact(){
     const box = document.getElementById('contact-box');
     if(box) box.innerHTML = `
       <div class="panel" style="margin-top:10px;background:var(--trust-bg);border-color:var(--trust-dim);">
-        <div class="panel-row"><span>Name</span><b>${esc(data.real_name || '—')}</b></div>
-        <div class="panel-row"><span>Phone</span><b>${esc(data.phone || '—')}</b></div>
-        <div class="panel-row"><span>Email</span><b>${esc(data.email || '—')}</b></div>
+        <div class="panel-row"><span>Verified name</span><b>${esc(data.name || '—')}</b></div>
+        ${data.handle ? `<div class="panel-row"><span>Social handle</span><b>${esc(data.handle)}</b></div>` : ''}
+        ${data.verified_account_url ? `<div class="panel-row"><span>Verified account</span><b><a href="${esc(data.verified_account_url)}" target="_blank" rel="noopener" style="color:var(--trust);text-decoration:none;">${esc(data.verified_account_url)}</a></b></div>` : ''}
+        <div class="notice" style="margin-top:8px;padding:8px 10px;">Phone and email stay private — message ${esc(data.name || 'them')} here instead.</div>
       </div>`;
   });
 }
@@ -733,7 +754,7 @@ function screenBookingsTab(){
   const items = list.map(b=>`
     <div class="panel" style="cursor:pointer;" onclick="openBookingDetail('${b.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <b style="font-size:14px;">${esc(b.counterparty_anon || 'Deal')}</b>
+        <b style="font-size:14px;">${bookingPartyLabel(b)}</b>
         ${pill(b.status)}
       </div>
       <div class="panel-row"><span>${esc(b.deliverable || 'Booking')}</span></div>
@@ -745,12 +766,12 @@ function screenBookingsTab(){
 function screenMessagesTab(){
   const list = state.bookingsList;
   if(!list || !list.length){
-    return `<div class="eyebrow">Messages</div><h1 style="font-size:22px;">Messages</h1><div class="sub">Threads unlock once a booking is paid.</div><div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">No conversations yet.</div>`;
+    return `<div class="eyebrow">Messages</div><h1 style="font-size:22px;">Messages</h1><div class="sub">Start a booking to open a conversation.</div><div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">No conversations yet.</div>`;
   }
   const items = list.map(b=>`
     <div class="panel" style="cursor:pointer;" onclick="openChat('${b.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <b style="font-size:14px;">${esc(b.counterparty_anon || 'Deal')}</b>
+        <b style="font-size:14px;">${bookingPartyLabel(b)}</b>
         ${pill(b.status)}
       </div>
       <div class="panel-row" style="border:none;padding-top:6px;">${esc(b.deliverable || 'Booking')}</div>
@@ -775,14 +796,13 @@ async function loadMessages(){
 function screenChat(){
   const b = state.booking;
   const me = state.currentUser;
-  const other = state.chatBooking ? state.chatBooking.other : (counterparty() || 'them');
-  const unlocked = ['identity_unlocked','delivered','approved','paid_out'].includes(b.status);
+  const other = state.chatBooking && state.chatBooking.other ? state.chatBooking.other : partyLabel();
   return `
-    <div class="back" onclick="nav('booking-detail')">&larr; ${esc(other)}</div>
+    <div class="back" onclick="nav('booking-detail')">&larr; ${other}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-      <h1 style="font-size:22px;">${esc(other)}</h1>${pill(b.status)}
+      <h1 style="font-size:22px;">${partyLabel()}</h1>${pill(b.status)}
     </div>
-    <div class="notice ${unlocked?'unlocked':'locked'}">${unlocked ? '🔓 Contacts visible — be careful sharing details with strangers.' : '🔒 Contact details blocked until escrow payment clears.'}</div>
+    <div class="notice locked">🔒 Phone, email and WhatsApp/Telegram handles are always filtered here — keep everything in the app.</div>
     <div id="chat-thread" class="thread" style="min-height:200px;max-height:360px;overflow-y:auto;"></div>
     <div style="display:flex;gap:8px;">
       <input id="chat-input" type="text" placeholder="Write a message…" style="flex:1;" onkeydown="if(event.key==='Enter')sendMessage()">
@@ -809,7 +829,7 @@ async function sendMessage(){
   await safe(async ()=>{
     const res = await api('/bookings/'+state.booking.id+'/messages', { method:'POST', body: JSON.stringify({ body }) });
     input.value = '';
-    if(res.filtered) toast('Contact details filtered — identity still hidden');
+    if(res.filtered) toast('Direct contact details (phone/email/handles) filtered');
     renderChat();
   });
 }
@@ -858,7 +878,7 @@ function screenBookingDetail(){
   return `
     <div class="back" onclick="switchTab('bookings-tab')">&larr; all bookings</div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-      <h1 style="font-size:24px;">${esc(other)}</h1>${pill(s)}
+      <h1 style="font-size:24px;">${partyLabel()}</h1>${pill(s)}
     </div>
     <div class="sub">${esc(b.deliverable || 'Booking')}</div>
     <div class="panel">
@@ -870,7 +890,7 @@ function screenBookingDetail(){
     <div class="thread">${bubbles || `<div class="sub">No offers yet.</div>`}</div>
     <div style="display:flex;gap:10px;margin-bottom:14px;">
       <button class="btn" style="flex:1;" onclick="openChat('${b.id}')">Chat</button>
-      <button class="btn" style="flex:1;" onclick="revealContact()">Contact</button>
+      <button class="btn" style="flex:1;" onclick="revealContact()">Verified identity</button>
     </div>
     <div id="contact-box"></div>
     ${actions}
@@ -887,10 +907,14 @@ function screenAccountTab(){
       <div class="field"><label>Avg reach</label><input id="ap-reach" type="text" value="${(state.myProfile&&state.myProfile.avg_reach)||''}"></div>
       <div class="field"><label>Engagement rate (%)</label><input id="ap-eng" type="text" value="${(state.myProfile&&state.myProfile.engagement_rate)||''}"></div>
       <div class="field"><label>Portfolio URLs (comma separated)</label><input id="ap-port" type="text" value="${esc((state.myProfile&&state.myProfile.portfolio_urls||[]).join(', '))}"></div>
+      <div class="field"><label>Verified social handle</label><input id="ap-handle" type="text" placeholder="@yourhandle" value="${esc((u.social_handle)||'')}"></div>
+      <div class="field"><label>Verified account URL</label><input id="ap-verified-url" type="text" placeholder="https://instagram.com/yourhandle" value="${esc((u.verified_account_url)||'')}"></div>
+      <div class="notice" style="margin-bottom:10px;">Your real name and handle reveal to a business the moment they request a booking. Direct contacts stay private.</div>
       <button class="btn btn-primary btn-block" onclick="saveCreatorProfile()">Save profile</button>`;
   } else {
     profileEdit = `
       <h2 style="font-size:15px;font-family:var(--sans);font-weight:600;margin:16px 0 8px;">Business profile</h2>
+      <div class="field"><label>Public display name (shown on reveal)</label><input id="bp-name" type="text" value="${esc(u.public_name||'')}"></div>
       <div class="field"><label>Industry</label><input id="bp-industry" type="text"></div>
       <div class="field"><label>Budget range</label><input id="bp-budget" type="text"></div>
       <div class="field"><label>GST number</label><input id="bp-gst" type="text"></div>
@@ -919,20 +943,31 @@ async function saveCreatorProfile(){
   const avg_reach = parseInt(document.getElementById('ap-reach').value)||0;
   const engagement_rate = parseFloat(document.getElementById('ap-eng').value)||0;
   const port = (document.getElementById('ap-port').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const social_handle = document.getElementById('ap-handle').value.trim();
+  const verified_account_url = document.getElementById('ap-verified-url').value.trim();
   await safe(async ()=>{
-    await api('/creators/me', { method:'PATCH', body: JSON.stringify({ niche, avg_reach, engagement_rate, portfolio_urls: port }) });
+    await api('/creators/me', { method:'PATCH', body: JSON.stringify({ niche, avg_reach, engagement_rate, portfolio_urls: port, social_handle, verified_account_url }) });
     toast('Profile saved');
+    await loadMe();
     await loadMyProfile();
     loadCreators();
   });
 }
 async function saveBusinessProfile(){
+  const public_name = document.getElementById('bp-name').value.trim();
   const industry = document.getElementById('bp-industry').value;
   const budget_range = document.getElementById('bp-budget').value;
   const gst_number = document.getElementById('bp-gst').value;
   await safe(async ()=>{
-    await api('/businesses/me', { method:'PATCH', body: JSON.stringify({ industry, budget_range, gst_number }) });
+    await api('/businesses/me', { method:'PATCH', body: JSON.stringify({ public_name, industry, budget_range, gst_number }) });
     toast('Profile saved');
+    await loadMe();
+  });
+}
+async function loadMe(){
+  await safe(async ()=>{
+    const me = await api('/auth/me');
+    state.currentUser = me.user;
   });
 }
 

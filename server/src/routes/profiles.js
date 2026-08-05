@@ -38,19 +38,22 @@ router.get('/creators/:anon_id', (req, res) => {
 // PATCH /creators/me — creator updates own profile
 router.patch('/creators/me', requireAuth, (req, res) => {
   if (req.user.role !== 'creator') return res.status(403).json({ error: 'Creators only' });
-  const { niche, avg_reach, engagement_rate, portfolio_urls } = req.body;
-  db.prepare(`UPDATE creator_profiles SET niche=?, avg_reach=?, engagement_rate=?, portfolio_urls=?
+  const { niche, avg_reach, engagement_rate, portfolio_urls, social_handle, verified_account_url } = req.body;
+  db.prepare(`UPDATE creator_profiles SET niche=?, avg_reach=?, engagement_rate=?, portfolio_urls=?,
+              social_handle=?, verified_account_url=?
               WHERE user_id = ?`)
-    .run(niche, avg_reach || 0, engagement_rate || 0, JSON.stringify(portfolio_urls || []), req.user.id);
+    .run(niche, avg_reach || 0, engagement_rate || 0, JSON.stringify(portfolio_urls || []),
+         social_handle || null, verified_account_url || null, req.user.id);
   res.json({ updated: true });
 });
 
 // PATCH /businesses/me
 router.patch('/businesses/me', requireAuth, (req, res) => {
   if (req.user.role !== 'business') return res.status(403).json({ error: 'Businesses only' });
-  const { industry, budget_range, gst_number } = req.body;
+  const { industry, budget_range, gst_number, public_name } = req.body;
   db.prepare(`UPDATE business_profiles SET industry=?, budget_range=?, gst_number=? WHERE user_id = ?`)
     .run(industry, budget_range, gst_number, req.user.id);
+  if (public_name) db.prepare(`UPDATE users SET public_name = ? WHERE id = ?`).run(public_name, req.user.id);
   res.json({ updated: true });
 });
 

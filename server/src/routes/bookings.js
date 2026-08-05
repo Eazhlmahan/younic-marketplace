@@ -34,7 +34,9 @@ router.get('/briefs', (req, res) => {
 router.post('/bookings', requireAuth, (req, res) => {
   if (req.user.role !== 'business') return res.status(403).json({ error: 'Only businesses can start a booking request' });
   const { creator_anon_id, deliverable, price, deadline, brief_id } = req.body;
-  const creator = db.prepare(`SELECT id FROM users WHERE anon_id = ? AND role = 'creator'`).get(creator_anon_id);
+  const creator = db.prepare(`SELECT u.id, u.real_name, cp.social_handle, cp.verified_account_url
+                              FROM users u LEFT JOIN creator_profiles cp ON cp.user_id = u.id
+                              WHERE u.anon_id = ? AND u.role = 'creator'`).get(creator_anon_id);
   if (!creator) return res.status(404).json({ error: 'Creator not found' });
 
   const id = uuid();
@@ -46,20 +48,36 @@ router.post('/bookings', requireAuth, (req, res) => {
               VALUES (?,?,?,?,?,1)`)
     .run(uuid(), id, 'business', price, parseInt(deadline) || 7);
 
-  res.status(201).json({ id, status: 'negotiating' });
+  // Identity reveals the moment a booking request is created — both sides see the
+  // other's real name + verified public handle. Phone/email are never shared.
+  res.status(201).json({
+    id, status: 'negotiating',
+    counterparty: {
+      name: creator.real_name, handle: creator.social_handle, verified_account_url: creator.verified_account_url,
+    },
+  });
 });
 
-// GET /bookings/:id — status + counter-offer history (still anonymized)
+// GET /bookings/:id — status + counter-offer history + counterpart identity
 router.get('/bookings/:id', requireAuth, (req, res) => {
   const b = getBooking(req.params.id);
   if (!b || !assertParty(b, req.user.id)) return res.status(404).json({ error: 'Not found' });
   const offers = db.prepare(`SELECT offered_by, price, timeline_days, round, created_at
                               FROM counter_offers WHERE booking_id = ? ORDER BY id`).all(b.id);
   const identityUnlocked = ['identity_unlocked', 'delivered', 'approved', 'paid_out'].includes(b.status);
-  const creator = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.creator_id);
-  const business = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.business_id);
+  const creator = db.prepare(`SELECT u.anon_id, u.real_name, cp.social_handle, cp.verified_account_url
+                              FROM users u LEFT JOIN creator_profiles cp ON cp.user_id = u.id WHERE u.id = ?`).get(b.creator_id);
+  const business = db.prepare('SELECT anon_id, public_name, real_name FROM users WHERE id = ?').get(b.business_id);
   res.json({
-    booking: { ...b, creator_anon: creator ? creator.anon_id : null, business_anon: business ? business.anon_id : null },
+    booking: {
+      ...b,
+      creator_anon: creator ? creator.anon_id : null,
+      creator_name: creator ? creator.real_name : null,
+      creator_handle: creator ? creator.social_handle : null,
+      creator_verified_url: creator ? creator.verified_account_url : null,
+      business_anon: business ? business.anon_id : null,
+      business_name: business ? (business.public_name || business.real_name) : null,
+    },
     offers, identity_unlocked: identityUnlocked,
   });
 });
@@ -113,30 +131,39 @@ router.post('/bookings/:id/escrow/pay', requireAuth, (req, res) => {
               VALUES (?,?,?,?,?, 'held')`)
     .run(escrowId, b.id, b.agreed_price, COMMISSION_PCT, `SIMULATED-${escrowId.slice(0, 8)}`);
 
-  // Identity unlocks the moment escrow is confirmed held — this is the enforcement point.
+  // Escrow's job is purely to hold and release money based on delivery approval —
+  // identity is already revealed at booking creation. This status just means "funded".
   db.prepare(`UPDATE bookings SET status = 'identity_unlocked' WHERE id = ?`).run(b.id);
   res.json({ status: 'identity_unlocked', escrow_id: escrowId, dev_note: 'Payment simulated — wire a real gateway here.' });
 });
 
-// GET /bookings/:id/reveal — only returns real identity if escrow is held+
+// GET /bookings/:id/reveal — real name + verified public handle, available at any booking
+// status the moment a booking exists. Phone/email are NEVER exposed here.
 router.get('/bookings/:id/reveal', requireAuth, (req, res) => {
   const b = getBooking(req.params.id);
   if (!b || !assertParty(b, req.user.id)) return res.status(404).json({ error: 'Not found' });
-  const unlocked = ['identity_unlocked', 'delivered', 'approved', 'paid_out'].includes(b.status);
-  if (!unlocked) return res.status(403).json({ error: 'Identities are locked until escrow payment clears.' });
 
-  const otherId = req.user.id === b.business_id ? b.creator_id : b.business_id;
-  const other = db.prepare('SELECT real_name, phone, email FROM users WHERE id = ?').get(otherId);
-  res.json({ real_name: other.real_name, phone: other.phone, email: other.email });
+  if (req.user.id === b.business_id) {
+    const creator = db.prepare(`SELECT u.anon_id, u.real_name, cp.social_handle, cp.verified_account_url
+                                FROM users u LEFT JOIN creator_profiles cp ON cp.user_id = u.id WHERE u.id = ?`).get(b.creator_id);
+    return res.json({
+      anon_id: creator.anon_id, name: creator.real_name,
+      handle: creator.social_handle, verified_account_url: creator.verified_account_url,
+    });
+  }
+  const business = db.prepare('SELECT anon_id, public_name, real_name FROM users WHERE id = ?').get(b.business_id);
+  res.json({
+    anon_id: business.anon_id, name: business.public_name || business.real_name,
+    handle: null, verified_account_url: null,
+  });
 });
 
-// POST /bookings/:id/messages { body } — filtered until unlocked
+// POST /bookings/:id/messages { body } — direct contact channels filtered at EVERY stage
 router.post('/bookings/:id/messages', requireAuth, (req, res) => {
   const b = getBooking(req.params.id);
   if (!b || !assertParty(b, req.user.id)) return res.status(404).json({ error: 'Not found' });
-  const unlocked = ['identity_unlocked', 'delivered', 'approved', 'paid_out'].includes(b.status);
   const { body } = req.body;
-  const { clean, flagged } = unlocked ? { clean: body, flagged: false } : filterContactInfo(body);
+  const { clean, flagged } = filterContactInfo(body);
   const id = uuid();
   db.prepare(`INSERT INTO messages (id, booking_id, sender_id, body, filtered) VALUES (?,?,?,?,?)`)
     .run(id, b.id, req.user.id, clean, flagged ? 1 : 0);
@@ -206,11 +233,17 @@ router.get('/bookings/mine/all', requireAuth, (req, res) => {
   const rows = db.prepare(`SELECT * FROM bookings WHERE business_id = ? OR creator_id = ? ORDER BY created_at DESC`)
     .all(req.user.id, req.user.id);
   const enriched = rows.map(b => {
-    const creator = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.creator_id);
-    const business = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.business_id);
+    const creator = db.prepare(`SELECT u.anon_id, u.real_name, cp.social_handle
+                                FROM users u LEFT JOIN creator_profiles cp ON cp.user_id = u.id WHERE u.id = ?`).get(b.creator_id);
+    const business = db.prepare('SELECT anon_id, public_name, real_name FROM users WHERE id = ?').get(b.business_id);
     const myRole = req.user.id === b.business_id ? 'business' : 'creator';
     const other = myRole === 'business' ? creator : business;
-    return { ...b, my_role: myRole, counterparty_anon: other ? other.anon_id : null };
+    return {
+      ...b, my_role: myRole,
+      counterparty_anon: other ? other.anon_id : null,
+      counterparty_name: myRole === 'business' ? (creator ? creator.real_name : null) : (business ? (business.public_name || business.real_name) : null),
+      counterparty_handle: myRole === 'business' ? (creator ? creator.social_handle : null) : null,
+    };
   });
   res.json({ bookings: enriched });
 });
