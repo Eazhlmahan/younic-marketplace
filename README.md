@@ -67,3 +67,5 @@ The repo is production-ready and pushed to GitHub: https://github.com/Eazhlmahan
   Without this, every redeploy would wipe users/bookings.
 - `SEED_ON_START=true` seeds the 3 demo creators once on first boot (idempotent).
 - Docker ignores `server/src/db/younic.db*` so a fresh container starts from the volume only.
+# Deployed via GitHub auto-build at 2026-08-05 10:57
+
