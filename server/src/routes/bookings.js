@@ -56,7 +56,12 @@ router.get('/bookings/:id', requireAuth, (req, res) => {
   const offers = db.prepare(`SELECT offered_by, price, timeline_days, round, created_at
                               FROM counter_offers WHERE booking_id = ? ORDER BY id`).all(b.id);
   const identityUnlocked = ['identity_unlocked', 'delivered', 'approved', 'paid_out'].includes(b.status);
-  res.json({ booking: b, offers, identity_unlocked: identityUnlocked });
+  const creator = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.creator_id);
+  const business = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.business_id);
+  res.json({
+    booking: { ...b, creator_anon: creator ? creator.anon_id : null, business_anon: business ? business.anon_id : null },
+    offers, identity_unlocked: identityUnlocked,
+  });
 });
 
 // POST /bookings/:id/counter { price, timeline_days }
@@ -200,7 +205,14 @@ router.post('/bookings/:id/rate', requireAuth, (req, res) => {
 router.get('/bookings/mine/all', requireAuth, (req, res) => {
   const rows = db.prepare(`SELECT * FROM bookings WHERE business_id = ? OR creator_id = ? ORDER BY created_at DESC`)
     .all(req.user.id, req.user.id);
-  res.json({ bookings: rows });
+  const enriched = rows.map(b => {
+    const creator = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.creator_id);
+    const business = db.prepare('SELECT anon_id FROM users WHERE id = ?').get(b.business_id);
+    const myRole = req.user.id === b.business_id ? 'business' : 'creator';
+    const other = myRole === 'business' ? creator : business;
+    return { ...b, my_role: myRole, counterparty_anon: other ? other.anon_id : null };
+  });
+  res.json({ bookings: enriched });
 });
 
 export default router;

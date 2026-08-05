@@ -190,6 +190,10 @@ let state = {
   selectedCreator: null, // full creator detail object from API
   booking: null,         // { id, ...booking row from API, offers: [] }
   bookingsList: [],
+  chatBooking: null,
+  contact: null,
+  myProfile: null,
+  ratingGiven: 0,
 };
 
 const NAV_ITEMS = [
@@ -216,6 +220,25 @@ function nav(screen, payload){
 function fmtINR(n){ return "₹" + Number(n||0).toLocaleString('en-IN'); }
 async function safe(fn){
   try { await fn(); } catch(e){ toast(e.message || 'Something went wrong'); }
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function isBusiness(){ return state.currentUser && state.currentUser.role === 'business'; }
+function isCreator(){ return state.currentUser && state.currentUser.role === 'creator'; }
+function counterparty(){
+  const b = state.booking, me = state.currentUser;
+  if(!b || !me) return null;
+  return me.id === b.business_id ? (b.creator_anon || 'Creator') : (b.business_anon || 'Business');
+}
+function statusMeta(s){
+  const m = { negotiating:['Negotiating','amber'], confirmed:['Confirmed','amber'], identity_unlocked:['Identity unlocked','trust'], delivered:['Delivered','trust'], paid_out:['Paid out','trust'], disputed:['Disputed','coral'], refunded:['Withdrawn','mute'] };
+  return m[s] || [s, 'mute'];
+}
+function pill(s){
+  const [label, kind] = statusMeta(s);
+  const bg = {amber:'var(--amber-bg)', trust:'var(--trust-bg)', coral:'var(--coral-bg)', mute:'var(--ink-3)'}[kind];
+  const fg = {amber:'var(--amber)', trust:'var(--trust)', coral:'var(--coral)', mute:'var(--text-mute)'}[kind];
+  const bd = {amber:'#6b5122', trust:'var(--trust-dim)', coral:'#6b2e24', mute:'var(--line)'}[kind];
+  return `<span class="status-pill" style="background:${bg};color:${fg};border:1px solid ${bd};">${label}</span>`;
 }
 
 /* ===================== STEPPER ===================== */
@@ -368,7 +391,6 @@ async function verifyOtp(){
 /* ===================== BROWSE / PROFILE ===================== */
 async function loadCreators(){
   await safe(async ()=>{
-
     const data = await api('/creators');
     state.creators = data.creators;
     if(state.screen === 'browse') render();
@@ -380,18 +402,19 @@ function screenBrowse(){
     return `<div class="eyebrow">Discover</div><h1>Browse creators</h1><div class="sub">Loading creators…</div>`;
   }
   const cards = state.creators.map(c => {
-    const anonNum = c.anon_id.replace(/\D/g,'');
+    const isOwn = state.currentUser && c.anon_id === state.currentUser.anon_id;
     return `
-    <div class="card" onclick="openProfile('${c.anon_id}')">
+    <div class="card" onclick="openProfile('${esc(c.anon_id)}')">
       <div class="card-top">
-        <span class="anon-id">${c.anon_id}</span>
-        <span class="tier-badge tier-${c.tier==='verified'?'verified':c.tier}">${c.tier}</span>
+        <span class="anon-id">${esc(c.anon_id)}</span>
+        <span class="tier-badge tier-${c.tier==='verified'?'verified':c.tier}">${esc(c.tier)}</span>
       </div>
-      <div class="niche">${c.niche || 'General'}</div>
+      <div class="niche">${esc(c.niche || 'General')}</div>
       <div class="stat-row">
-        <span>${c.completed_deals} deals &middot; <b>★ ${(c.rating_avg||0).toFixed?c.rating_avg.toFixed(1):c.rating_avg}</b></span>
+        <span>${c.completed_deals} deals &middot; <b>★ ${(c.rating_avg||0).toFixed ? c.rating_avg.toFixed(1) : c.rating_avg}</b></span>
         <span><b>${(c.avg_reach||0).toLocaleString()}</b> avg reach</span>
       </div>
+      ${isOwn ? `<div class="notice" style="margin:10px 0 0;padding:6px 10px;">This is your profile</div>` : ''}
     </div>`;
   }).join('');
 
@@ -413,19 +436,27 @@ async function openProfile(anonId){
 function screenProfile(){
   const c = state.selectedCreator;
   if(!c) return `<div class="sub">Loading…</div>`;
-  const port = (c.portfolio_urls && c.portfolio_urls.length ? c.portfolio_urls : ['','','']).slice(0,3).map(()=>`<div class="port-item">reel</div>`).join('');
+  const port = (c.portfolio_urls && c.portfolio_urls.length ? c.portfolio_urls : [])
+    .slice(0,3)
+    .map(u=>`<div class="port-item">${u?'<a href="'+esc(u)+'" target="_blank" rel="noopener" style="color:var(--trust);font-size:10px;text-decoration:none;">view</a>':'reel'}</div>`)
+    .join('') || `<div class="port-item">reel</div>`;
   const history = (c.history||[]).length
-    ? c.history.map(h=>`<div class="deal-row"><span>${h.rater_anon} &middot; ${h.deliverable}</span><span class="rating">★ ${h.score.toFixed(1)}</span></div>`).join('')
+    ? c.history.map(h=>`<div class="deal-row"><span>${esc(h.rater_anon)} &middot; ${esc(h.deliverable)}</span><span class="rating">★ ${h.score.toFixed(1)}</span></div>`).join('')
     : `<div class="deal-row"><span>No completed deals yet</span></div>`;
+  const actionBtn = isBusiness()
+    ? `<button class="btn btn-primary btn-block" onclick="nav('request')">Request booking</button>`
+    : (state.currentUser && c.anon_id === state.currentUser.anon_id)
+      ? `<button class="btn btn-block" onclick="switchTab('bookings-tab')">View my bookings</button>`
+      : `<div class="notice">Only businesses can start a booking request.</div>`;
   return `
     <div class="back" onclick="nav('browse')">&larr; back to browse</div>
     <div class="profile-head">
       <div>
         <div class="eyebrow">Creator profile</div>
-        <h1>${c.anon_id}</h1>
-        <div class="sub">${c.niche || 'General'}</div>
+        <h1>${esc(c.anon_id)}</h1>
+        <div class="sub">${esc(c.niche || 'General')}</div>
       </div>
-      <span class="tier-badge tier-${c.tier}">${c.tier}</span>
+      <span class="tier-badge tier-${esc(c.tier)}">${esc(c.tier)}</span>
     </div>
     <div class="stat-boxes">
       <div class="stat-box"><div class="num">${(c.avg_reach||0).toLocaleString()}</div><div class="lbl">avg reach</div></div>
@@ -436,17 +467,18 @@ function screenProfile(){
     <div class="port-grid">${port}</div>
     <h2 style="font-size:15px;font-family:var(--sans);font-weight:600;margin-bottom:10px;">Deal history</h2>
     <div class="panel" style="padding-top:4px;">${history}</div>
-    <button class="btn btn-primary btn-block" onclick="nav('request')">Request booking</button>
+    ${actionBtn}
   `;
 }
 
-/* ===================== REQUEST / NEGOTIATE ===================== */
+/* ===================== REQUEST ===================== */
 function screenRequest(){
   const c = state.selectedCreator;
+  if(!c) return `<div class="sub">Loading…</div>`;
   return `
-    <div class="back" onclick="openProfile('${c.anon_id}')">&larr; back to profile</div>
+    <div class="back" onclick="openProfile('${esc(c.anon_id)}')">&larr; back to profile</div>
     <div class="eyebrow">Booking request</div>
-    <h1>Request ${c.anon_id}</h1>
+    <h1>Request ${esc(c.anon_id)}</h1>
     <div class="sub">Identities stay hidden until escrow payment clears.</div>
     <div class="field"><label>Deliverable</label><input id="f-deliverable" type="text" value="1 reel (60s)"></div>
     <div class="field"><label>Your offer price</label><input id="f-price" type="text" value="8000"></div>
@@ -458,6 +490,7 @@ function screenRequest(){
 
 async function sendRequest(){
   const c = state.selectedCreator;
+  if(!isBusiness()) return toast('Only businesses can request bookings');
   const deliverable = document.getElementById('f-deliverable').value;
   const price = parseInt(document.getElementById('f-price').value) || 8000;
   const deadline = document.getElementById('f-deadline').value;
@@ -471,6 +504,7 @@ async function sendRequest(){
   });
 }
 
+/* ===================== NEGOTIATE ===================== */
 async function refreshBooking(id){
   const data = await api('/bookings/'+id);
   state.booking = { ...data.booking, offers: data.offers, identity_unlocked: data.identity_unlocked };
@@ -478,18 +512,22 @@ async function refreshBooking(id){
 
 function screenNegotiate(){
   const b = state.booking;
-  const c = state.selectedCreator;
-  const bubbles = b.offers.map(r => `<div class="bubble ${r.offered_by==='business'?'me':'them'}">${r.offered_by==='business'?'You':c.anon_id} ${r.round===1?'offered':'countered'} ${fmtINR(r.price)} &middot; ${r.timeline_days} days</div>`).join('');
-  const roundNum = b.offers.length;
+  const other = counterparty() || 'Creator';
+  const meRole = isBusiness() ? 'business' : 'creator';
+  const bubbles = (b.offers||[]).map(r => {
+    const mine = r.offered_by === meRole;
+    return `<div class="bubble ${mine?'me':'them'}">${mine?'You':esc(other)} ${r.round===1?'offered':'countered'} ${fmtINR(r.price)} &middot; ${r.timeline_days} days</div>`;
+  }).join('');
+  const roundNum = (b.offers||[]).length;
   const capReached = roundNum >= 3;
   return `
-    <div class="back" onclick="openProfile('${c.anon_id}')">&larr; back to profile</div>
+    <div class="back" onclick="nav('booking-detail')">&larr; booking</div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <h1 style="font-size:24px;">Negotiating</h1>
-      <span class="status-pill" style="background:var(--amber-bg);color:var(--amber);border:1px solid #6b5122;">Round ${Math.min(roundNum,3)} of 3</span>
+      ${pill(b.status)}
     </div>
-    <div class="sub">with ${c.anon_id} &middot; still anonymous</div>
-    <div class="thread">${bubbles}</div>
+    <div class="sub">with ${esc(other)} &middot; still anonymous</div>
+    <div class="thread">${bubbles || `<div class="sub">No offers yet.</div>`}</div>
     <div class="notice">${capReached ? "Round limit reached — accept the latest offer or withdraw." : "Up to "+(3-roundNum)+" more round(s). After round 3, accept or the request expires."}</div>
     ${capReached ? '' : `
       <div class="field"><label>Counter price</label><input id="neg-price" type="text" value="${b.agreed_price - 500}"></div>
@@ -518,33 +556,34 @@ async function acceptOffer(){
     await api('/bookings/'+state.booking.id+'/accept', { method:'POST' });
     await refreshBooking(state.booking.id);
     toast('Offer accepted');
-    nav('escrow');
+    if(isBusiness()) nav('escrow'); else nav('booking-detail');
   });
 }
 async function withdrawRequest(){
   await safe(async ()=>{
     await api('/bookings/'+state.booking.id+'/withdraw', { method:'POST' });
     toast('Request withdrawn');
-    nav('browse');
+    await loadMyBookings();
+    nav('bookings-tab');
   });
 }
 
 /* ===================== ESCROW / DELIVER / PAYOUT ===================== */
 function screenEscrow(){
   const b = state.booking;
-  const c = state.selectedCreator;
+  const other = counterparty() || 'creator';
   const commission = Math.round(b.agreed_price * 0.15);
   const creatorGets = b.agreed_price - commission;
   return `
     <div class="eyebrow">Confirm and pay</div>
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h1 style="font-size:24px;">Escrow payment</h1>
-      <span class="status-pill" style="background:var(--trust-bg);color:var(--trust);border:1px solid var(--trust-dim);">Accepted</span>
+      ${pill(b.status)}
     </div>
-    <div class="sub">${c.anon_id} accepted your booking</div>
+    <div class="sub">${esc(other)} accepted your booking</div>
     <div class="panel">
-      <div class="panel-row"><span>Deliverable</span><b>${b.deliverable}</b></div>
-      <div class="panel-row"><span>Delivery by</span><b>${b.deadline} days</b></div>
+      <div class="panel-row"><span>Deliverable</span><b>${esc(b.deliverable)}</b></div>
+      <div class="panel-row"><span>Delivery by</span><b>${esc(b.deadline)} days</b></div>
       <div class="panel-row"><span>Agreed price</span><b>${fmtINR(b.agreed_price)}</b></div>
     </div>
     <div class="panel">
@@ -568,54 +607,84 @@ async function payEscrow(){
 
 function screenDeliver(){
   const b = state.booking;
-  const c = state.selectedCreator;
+  const other = counterparty() || 'creator';
+  const unlocked = ['identity_unlocked','delivered','approved','paid_out'].includes(b.status);
+  const creatorDelivered = ['delivered','approved','paid_out'].includes(b.status);
+  let action = '';
+  if(isCreator() && b.status === 'identity_unlocked'){
+    action = `
+      <div class="field"><label>Deliverable file URL</label><input id="dl-url" type="text" placeholder="https://.../final-reel.mp4"></div>
+      <button class="btn btn-primary btn-block" onclick="uploadDeliverable()">Upload deliverable</button>`;
+  } else if(isCreator() && creatorDelivered){
+    action = `<div class="notice unlocked">✓ Delivered — waiting for ${esc(other)} to approve and release payout.</div>`;
+  } else if(isBusiness() && b.status === 'delivered'){
+    action = `<button class="btn btn-primary btn-block" onclick="nav('payout')">Review and approve</button>`;
+  } else if(isBusiness()){
+    action = `<div class="notice">⏳ Waiting for ${esc(other)} to upload content.</div>`;
+  }
   return `
-    <div class="eyebrow">Identities unlocked</div>
-    <h1 style="font-size:24px;">Awaiting delivery</h1>
-    <div class="sub">${c.anon_id} is preparing your content</div>
+    <div class="eyebrow">${unlocked?'Identities unlocked':'Deal progress'}</div>
+    <h1 style="font-size:24px;">Delivery</h1>
+    <div class="sub">${esc(other)} ${isBusiness()?'is preparing your content':'is working on this booking'}</div>
     <div class="panel">
-      <div class="panel-row"><span>Deliverable</span><b>${b.deliverable}</b></div>
-      <div class="panel-row"><span>Escrow held</span><b>${fmtINR(b.agreed_price)}</b></div>
+      <div class="panel-row"><span>Deliverable</span><b>${esc(b.deliverable)}</b></div>
+      <div class="panel-row"><span>Status</span><b>${pill(b.status)}</b></div>
     </div>
-    <div class="notice unlocked">✓ Real names and contact info are now visible to both sides.</div>
-    <button class="btn btn-primary btn-block" onclick="markDelivered()">Simulate: creator uploads content</button>
+    ${unlocked ? `<div class="notice unlocked">✓ Real names and contact info are now visible to both sides.</div>` : ''}
+    ${action}
+    <button class="btn btn-block" style="margin-top:10px;" onclick="revealContact()">Show contact details</button>
+    <div id="contact-box"></div>
   `;
 }
 
-async function markDelivered(){
+async function uploadDeliverable(){
+  const url = (document.getElementById('dl-url')||{}).value;
+  if(!url) return toast('Paste a file URL first');
   await safe(async ()=>{
-    // Booking flow requires the creator account to call this in reality;
-    // for this demo client (logged in as the business) we call approve
-    // directly after a simulated delivery record via the deliverables endpoint,
-    // which the API allows since dev/test tokens aren't role-restricted here.
-    try {
-      await api('/bookings/'+state.booking.id+'/deliverables', { method:'POST', body: JSON.stringify({ file_url: 'https://example.com/demo-reel.mp4' }) });
-    } catch(e){ /* expected if not logged in as the creator — continue to approve for demo purposes */ }
+    await api('/bookings/'+state.booking.id+'/deliverables', { method:'POST', body: JSON.stringify({ file_url: url }) });
     await refreshBooking(state.booking.id);
-    nav('payout');
+    toast('Content delivered');
+    render();
+  });
+}
+
+async function revealContact(){
+  await safe(async ()=>{
+    const data = await api('/bookings/'+state.booking.id+'/reveal');
+    const box = document.getElementById('contact-box');
+    if(box) box.innerHTML = `
+      <div class="panel" style="margin-top:10px;background:var(--trust-bg);border-color:var(--trust-dim);">
+        <div class="panel-row"><span>Name</span><b>${esc(data.real_name || '—')}</b></div>
+        <div class="panel-row"><span>Phone</span><b>${esc(data.phone || '—')}</b></div>
+        <div class="panel-row"><span>Email</span><b>${esc(data.email || '—')}</b></div>
+      </div>`;
   });
 }
 
 function screenPayout(){
   const b = state.booking;
-  const c = state.selectedCreator;
+  const other = counterparty() || 'creator';
   const commission = Math.round(b.agreed_price * 0.15);
   const creatorGets = b.agreed_price - commission;
+  const isPaid = b.status === 'paid_out';
+  const businessCanApprove = isBusiness() && b.status === 'delivered';
   return `
     <div class="eyebrow">Deal status: ${b.status}</div>
-    <h1 style="font-size:24px;">${b.status === 'delivered' ? 'Approve content' : 'Content approved'}</h1>
-    <div class="sub">${c.anon_id}</div>
+    <h1 style="font-size:24px;">${isPaid ? 'Deal complete' : (businessCanApprove ? 'Approve content' : 'Payout')}</h1>
+    <div class="sub">${esc(other)}</div>
     <div class="panel">
       <div class="panel-row"><span>Amount to release</span><b>${fmtINR(creatorGets)}</b></div>
       <div class="panel-row"><span>Younic commission</span><b>${fmtINR(commission)}</b></div>
     </div>
-    ${b.status === 'delivered' ? `<button class="btn btn-primary btn-block" onclick="approveAndPay()">Approve and release payout</button>` : `
-    <div class="field"><label>Rate this creator</label>
+    ${businessCanApprove ? `<button class="btn btn-primary btn-block" onclick="approveAndPay()">Approve and release payout</button>` : ''}
+    ${isBusiness() && b.status !== 'delivered' && b.status !== 'paid_out' ? `<button class="btn btn-block" onclick="nav('deliver')">Back to delivery</button>` : ''}
+    ${isPaid ? `
+    <div class="field" style="margin-top:14px;"><label>Rate this ${isBusiness()?'creator':'business'}</label>
       <div style="display:flex;gap:6px;margin-bottom:10px;">
         ${[1,2,3,4,5].map(n=>`<span style="cursor:pointer;font-size:22px;color:var(--amber);" onclick="rate(${n})">${n<=(state.ratingGiven||0)?'★':'☆'}</span>`).join('')}
       </div>
     </div>
-    <button class="btn btn-primary btn-block" onclick="nav('browse')">Back to browse</button>`}
+    <button class="btn btn-block" onclick="nav('browse')">Back to browse</button>` : ''}
   `;
 }
 
@@ -636,17 +705,241 @@ async function rate(n){
   });
 }
 
-/* ===================== TABS ===================== */
+/* ===================== BOOKINGS / CHAT / ACCOUNT ===================== */
 async function loadMyBookings(){
   await safe(async ()=>{
     const data = await api('/bookings/mine/all');
     state.bookingsList = data.bookings;
-    render();
+    if(['bookings-tab','messages-tab'].includes(state.screen)) render();
+  });
+}
+
+async function openBookingDetail(id){
+  await safe(async ()=>{
+    await refreshBooking(id);
+    nav('booking-detail');
+  });
+}
+
+function screenBookingsTab(){
+  const list = state.bookingsList;
+  if(!list || !list.length){
+    return `
+      <div class="eyebrow">Bookings</div><h1 style="font-size:22px;">Your bookings</h1>
+      <div class="sub">${isBusiness()?'Start one from Browse.':'Incoming requests will appear here.'}</div>
+      <div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">No bookings yet.</div>
+      ${isBusiness() ? `<button class="btn btn-primary btn-block" onclick="switchTab('browse')">Browse creators</button>` : ''}`;
+  }
+  const items = list.map(b=>`
+    <div class="panel" style="cursor:pointer;" onclick="openBookingDetail('${b.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <b style="font-size:14px;">${esc(b.counterparty_anon || 'Deal')}</b>
+        ${pill(b.status)}
+      </div>
+      <div class="panel-row"><span>${esc(b.deliverable || 'Booking')}</span></div>
+      <div class="panel-row"><span>Price</span><b>${fmtINR(b.agreed_price)}</b></div>
+    </div>`).join('');
+  return `<div class="eyebrow">Bookings</div><h1 style="font-size:22px;">Your bookings</h1><div class="sub">Tap a booking to view the deal.</div>${items}`;
+}
+
+function screenMessagesTab(){
+  const list = state.bookingsList;
+  if(!list || !list.length){
+    return `<div class="eyebrow">Messages</div><h1 style="font-size:22px;">Messages</h1><div class="sub">Threads unlock once a booking is paid.</div><div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">No conversations yet.</div>`;
+  }
+  const items = list.map(b=>`
+    <div class="panel" style="cursor:pointer;" onclick="openChat('${b.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <b style="font-size:14px;">${esc(b.counterparty_anon || 'Deal')}</b>
+        ${pill(b.status)}
+      </div>
+      <div class="panel-row" style="border:none;padding-top:6px;">${esc(b.deliverable || 'Booking')}</div>
+    </div>`).join('');
+  return `<div class="eyebrow">Messages</div><h1 style="font-size:22px;">Messages</h1><div class="sub">Negotiation and delivery thread per booking.</div>${items}`;
+}
+
+async function openChat(id){
+  await safe(async ()=>{
+    await refreshBooking(id);
+    state.chatBooking = { id, other: counterparty() };
+    nav('chat');
+    renderChat();
+  });
+}
+
+async function loadMessages(){
+  const data = await api('/bookings/'+state.booking.id+'/messages');
+  return data.messages || [];
+}
+
+function screenChat(){
+  const b = state.booking;
+  const me = state.currentUser;
+  const other = state.chatBooking ? state.chatBooking.other : (counterparty() || 'them');
+  const unlocked = ['identity_unlocked','delivered','approved','paid_out'].includes(b.status);
+  return `
+    <div class="back" onclick="nav('booking-detail')">&larr; ${esc(other)}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <h1 style="font-size:22px;">${esc(other)}</h1>${pill(b.status)}
+    </div>
+    <div class="notice ${unlocked?'unlocked':'locked'}">${unlocked ? '🔓 Contacts visible — be careful sharing details with strangers.' : '🔒 Contact details blocked until escrow payment clears.'}</div>
+    <div id="chat-thread" class="thread" style="min-height:200px;max-height:360px;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;">
+      <input id="chat-input" type="text" placeholder="Write a message…" style="flex:1;" onkeydown="if(event.key==='Enter')sendMessage()">
+      <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+    </div>
+  `;
+}
+
+async function renderChat(){
+  const box = document.getElementById('chat-thread');
+  if(!box) return;
+  const me = state.currentUser;
+  const msgs = await loadMessages();
+  box.innerHTML = msgs.length
+    ? msgs.map(m=>`<div class="bubble ${m.sender_id===me.id?'me':'them'}">${esc(m.body)}${m.filtered?` <span style="font-size:9px;color:var(--amber);">(contact filtered)</span>`:''}</div>`).join('')
+    : `<div class="sub">No messages yet.</div>`;
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendMessage(){
+  const input = document.getElementById('chat-input');
+  const body = (input && input.value || '').trim();
+  if(!body) return;
+  await safe(async ()=>{
+    const res = await api('/bookings/'+state.booking.id+'/messages', { method:'POST', body: JSON.stringify({ body }) });
+    input.value = '';
+    if(res.filtered) toast('Contact details filtered — identity still hidden');
+    renderChat();
+  });
+}
+
+function screenBookingDetail(){
+  const b = state.booking;
+  if(!b) return `<div class="sub">Loading…</div>`;
+  const other = counterparty() || 'Deal';
+  const meRole = isBusiness() ? 'business' : 'creator';
+  const unlocked = ['identity_unlocked','delivered','approved','paid_out'].includes(b.status);
+  const bubbles = (b.offers||[]).map(r=>{
+    const mine = r.offered_by===meRole;
+    return `<div class="bubble ${mine?'me':'them'}">${mine?'You':esc(other)} ${r.round===1?'offered':'countered'} ${fmtINR(r.price)} &middot; ${r.timeline_days}d</div>`;
+  }).join('');
+  let actions = '';
+  const s = b.status;
+  if(s==='negotiating'){
+    actions = `
+      <div class="field"><label>Counter price</label><input id="neg-price" type="text" value="${b.agreed_price-500}"></div>
+      <div class="field"><label>Counter timeline (days)</label><input id="neg-days" type="text" value="7"></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="acceptOffer()">Accept ${fmtINR(b.agreed_price)}</button>
+        <button class="btn" style="flex:1;" onclick="counterOffer()">Counter</button>
+      </div>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="withdrawRequest()">Withdraw</button>`;
+  } else if(s==='confirmed'){
+    actions = isBusiness()
+      ? `<button class="btn btn-primary btn-block" onclick="payEscrow()">Pay ${fmtINR(b.agreed_price)} into escrow</button>`
+      : `<div class="notice">Waiting for the business to fund escrow.</div>`;
+  } else if(s==='identity_unlocked'){
+    actions = isCreator()
+      ? `<div class="field"><label>Deliverable file URL</label><input id="dl-url" type="text" placeholder="https://.../final.mp4"></div><button class="btn btn-primary btn-block" onclick="uploadDeliverable()">Upload deliverable</button>`
+      : `<div class="notice">Waiting for the creator to upload content.</div>`;
+  } else if(s==='delivered'){
+    actions = isBusiness()
+      ? `<button class="btn btn-primary btn-block" onclick="approveAndPay()">Approve and release payout</button>`
+      : `<div class="notice unlocked">✓ Delivered — waiting for approval and payout.</div>`;
+  } else if(s==='paid_out'){
+    actions = `<div class="notice unlocked">✓ Deal complete. Payout released.</div>
+      <div class="field" style="margin-top:10px;"><label>Rate ${isBusiness()?'creator':'business'}</label>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">${[1,2,3,4,5].map(n=>`<span style="cursor:pointer;font-size:22px;color:var(--amber);" onclick="rate(${n})">${n<=(state.ratingGiven||0)?'★':'☆'}</span>`).join('')}</div>
+      </div>`;
+  } else {
+    actions = `<div class="notice">This booking is ${pill(s)}.</div>`;
+  }
+  return `
+    <div class="back" onclick="switchTab('bookings-tab')">&larr; all bookings</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h1 style="font-size:24px;">${esc(other)}</h1>${pill(s)}
+    </div>
+    <div class="sub">${esc(b.deliverable || 'Booking')}</div>
+    <div class="panel">
+      <div class="panel-row"><span>Agreed price</span><b>${fmtINR(b.agreed_price)}</b></div>
+      <div class="panel-row"><span>Delivery by</span><b>${esc(b.deadline)} days</b></div>
+      <div class="panel-row"><span>Escrow held</span><b>${unlocked?fmtINR(b.agreed_price):'—'}</b></div>
+    </div>
+    <h2 style="font-size:15px;font-family:var(--sans);font-weight:600;margin-bottom:8px;">Negotiation</h2>
+    <div class="thread">${bubbles || `<div class="sub">No offers yet.</div>`}</div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;">
+      <button class="btn" style="flex:1;" onclick="openChat('${b.id}')">Chat</button>
+      <button class="btn" style="flex:1;" onclick="revealContact()">Contact</button>
+    </div>
+    <div id="contact-box"></div>
+    ${actions}
+  `;
+}
+
+function screenAccountTab(){
+  const u = state.currentUser || {};
+  let profileEdit = '';
+  if(isCreator()){
+    profileEdit = `
+      <h2 style="font-size:15px;font-family:var(--sans);font-weight:600;margin:16px 0 8px;">Creator profile</h2>
+      <div class="field"><label>Niche</label><input id="ap-niche" type="text" value="${esc((state.myProfile&&state.myProfile.niche)||'')}"></div>
+      <div class="field"><label>Avg reach</label><input id="ap-reach" type="text" value="${(state.myProfile&&state.myProfile.avg_reach)||''}"></div>
+      <div class="field"><label>Engagement rate (%)</label><input id="ap-eng" type="text" value="${(state.myProfile&&state.myProfile.engagement_rate)||''}"></div>
+      <div class="field"><label>Portfolio URLs (comma separated)</label><input id="ap-port" type="text" value="${esc((state.myProfile&&state.myProfile.portfolio_urls||[]).join(', '))}"></div>
+      <button class="btn btn-primary btn-block" onclick="saveCreatorProfile()">Save profile</button>`;
+  } else {
+    profileEdit = `
+      <h2 style="font-size:15px;font-family:var(--sans);font-weight:600;margin:16px 0 8px;">Business profile</h2>
+      <div class="field"><label>Industry</label><input id="bp-industry" type="text"></div>
+      <div class="field"><label>Budget range</label><input id="bp-budget" type="text"></div>
+      <div class="field"><label>GST number</label><input id="bp-gst" type="text"></div>
+      <button class="btn btn-primary btn-block" onclick="saveBusinessProfile()">Save profile</button>`;
+  }
+  return `
+    <div class="eyebrow">Account</div>
+    <h1 style="font-size:22px;">${esc(u.anon_id||'')}</h1>
+    <div class="sub">${u.role==='creator'?'Creator':'Business'} &middot; tier ${esc(u.tier)}</div>
+    <div class="verify-item"><div class="verify-dot ${u.phone_verified?'done':''}">${u.phone_verified?'✓':''}</div><div class="verify-text"><div class="t">Phone verified</div></div></div>
+    <div class="verify-item"><div class="verify-dot ${u.email_verified?'done':''}">${u.email_verified?'✓':''}</div><div class="verify-text"><div class="t">Email verified</div></div></div>
+    ${profileEdit}
+    <button class="btn btn-block" style="margin-top:20px;" onclick="logout()">Log out</button>
+  `;
+}
+
+async function loadMyProfile(){
+  if(!isCreator()) return;
+  await safe(async ()=>{
+    const data = await api('/creators/'+encodeURIComponent(state.currentUser.anon_id));
+    state.myProfile = data;
+  });
+}
+async function saveCreatorProfile(){
+  const niche = document.getElementById('ap-niche').value;
+  const avg_reach = parseInt(document.getElementById('ap-reach').value)||0;
+  const engagement_rate = parseFloat(document.getElementById('ap-eng').value)||0;
+  const port = (document.getElementById('ap-port').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  await safe(async ()=>{
+    await api('/creators/me', { method:'PATCH', body: JSON.stringify({ niche, avg_reach, engagement_rate, portfolio_urls: port }) });
+    toast('Profile saved');
+    await loadMyProfile();
+    loadCreators();
+  });
+}
+async function saveBusinessProfile(){
+  const industry = document.getElementById('bp-industry').value;
+  const budget_range = document.getElementById('bp-budget').value;
+  const gst_number = document.getElementById('bp-gst').value;
+  await safe(async ()=>{
+    await api('/businesses/me', { method:'PATCH', body: JSON.stringify({ industry, budget_range, gst_number }) });
+    toast('Profile saved');
   });
 }
 
 /* ===================== RENDER ===================== */
 function render(){
+  if(['request','escrow'].includes(state.screen) && !isBusiness()) state.screen = 'bookings-tab';
+  if(['request','negotiate','escrow','deliver','payout','booking-detail','chat'].includes(state.screen) && !state.booking) state.screen = 'bookings-tab';
   const el = document.getElementById('app');
   let body = '';
   switch(state.screen){
@@ -662,28 +955,17 @@ function render(){
     case 'escrow': body = screenEscrow(); break;
     case 'deliver': body = screenDeliver(); break;
     case 'payout': body = screenPayout(); break;
-    case 'bookings-tab':
-      body = `<div class="eyebrow">Bookings</div><h1 style="font-size:22px;">Your bookings</h1><div class="sub">Active and past bookings.</div>` +
-        (state.bookingsList.length
-          ? state.bookingsList.map(b=>`<div class="panel"><div class="panel-row"><span>${b.deliverable}</span><b>${b.status}</b></div><div class="panel-row"><span>Price</span><b>${fmtINR(b.agreed_price)}</b></div></div>`).join('')
-          : `<div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">No bookings yet — start one from Browse.</div>`);
-      break;
-    case 'messages-tab':
-      body = `<div class="eyebrow">Messages</div><h1 style="font-size:22px;">Messages</h1><div class="sub">Contact details stay hidden until a booking is paid.</div><div class="panel" style="text-align:center;color:var(--text-mute);padding:30px;">Open a booking's negotiation thread to message.</div>`;
-      break;
-    case 'account-tab': {
-      const u = state.currentUser || {};
-      body = `<div class="eyebrow">Account</div><h1 style="font-size:22px;">${u.anon_id || ''}</h1>
-        <div class="verify-item"><div class="verify-dot ${u.phone_verified?'done':''}">${u.phone_verified?'✓':''}</div><div class="verify-text"><div class="t">Phone verified</div></div></div>
-        <div class="verify-item"><div class="verify-dot ${u.email_verified?'done':''}">${u.email_verified?'✓':''}</div><div class="verify-text"><div class="t">Email verified</div></div></div>
-        <button class="btn btn-block" style="margin-top:20px;" onclick="logout()">Log out</button>`;
-      break;
-    }
+    case 'booking-detail': body = screenBookingDetail(); break;
+    case 'chat': body = screenChat(); break;
+    case 'bookings-tab': body = screenBookingsTab(); break;
+    case 'messages-tab': body = screenMessagesTab(); break;
+    case 'account-tab': body = screenAccountTab(); break;
   }
 
   const isAuth = AUTH_SCREENS.includes(state.screen);
-  const stepIdx = stepIndexForScreen(state.screen);
-  const activeTab = ['browse','profile','request','negotiate','escrow','deliver','payout'].includes(state.screen) ? 'browse' : state.screen;
+  const stepIdx = (isBusiness() && ['browse','profile','request','negotiate','escrow','deliver','payout'].includes(state.screen)) ? stepIndexForScreen(state.screen) : -1;
+  const activeTab = ['browse','profile','request','negotiate','escrow','deliver','payout'].includes(state.screen) ? 'browse'
+    : (['booking-detail','chat'].includes(state.screen) ? 'bookings-tab' : state.screen);
 
   const navBar = isAuth ? '' : `
     <div class="bottom-nav">
@@ -713,9 +995,16 @@ function render(){
 function switchTab(tab){
   if(tab==='browse'){ nav('browse'); loadCreators(); }
   else if(tab==='bookings-tab'){ nav('bookings-tab'); loadMyBookings(); }
+  else if(tab==='messages-tab'){ nav('messages-tab'); loadMyBookings(); }
+  else if(tab==='account-tab'){ nav('account-tab'); loadMyProfile(); }
   else nav(tab);
 }
-function logout(){ setToken(null); state.currentUser = null; nav('splash'); }
+function logout(){
+  setToken(null);
+  state.currentUser = null; state.booking = null; state.selectedCreator = null;
+  state.bookingsList = []; state.chatBooking = null; state.myProfile = null;
+  nav('splash');
+}
 
 /* boot */
 if(AUTH_TOKEN){
@@ -724,6 +1013,7 @@ if(AUTH_TOKEN){
     state.currentUser = me.user;
     state.authRole = me.user.role;
     loadCreators();
+    loadMyBookings();
   });
 }
 render();
