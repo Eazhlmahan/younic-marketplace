@@ -17,7 +17,7 @@ app.use(express.json());
 // Auto-seed demo creators on boot (idempotent — skips existing). Disable with SEED_ON_START=false.
 if (process.env.SEED_ON_START !== 'false') {
   const { seedDemoData } = await import('./db/seed.js');
-  if (seedDemoData() === 0) console.log('Seeded demo creators. Login any with password: password123');
+  if ((await seedDemoData()) === 0) console.log('Seeded demo creators. Login any with password: password123');
 }
 
 app.get('/health', (req, res) => res.json({ ok: true }));

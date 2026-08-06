@@ -1,31 +1,19 @@
-import Database from 'better-sqlite3';
+import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = process.env.DATABASE_PATH
-  ? process.env.DATABASE_PATH
-  : path.join(__dirname, 'younic.db');
 
-if (path.dirname(dbPath) !== '.' && !fs.existsSync(path.dirname(dbPath))) {
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-}
+// Postgres connection pool. Connection string is provided by Railway as DATABASE_URL once
+// a Postgres addon is attached — never hardcode a connection string here.
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
-export const db = new Database(dbPath);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
+// Create tables on boot (idempotent). pg's simple query protocol executes multiple statements.
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
-db.exec(schema);
+await pool.query(schema);
 
-// Idempotent migrations for existing databases (CREATE TABLE IF NOT EXISTS won't add columns).
-function addColumn(table, column, ddl) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
-  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
-}
-addColumn('users', 'public_name', 'public_name TEXT');
-addColumn('creator_profiles', 'social_handle', 'social_handle TEXT');
-addColumn('creator_profiles', 'verified_account_url', 'verified_account_url TEXT');
-
-export default db;
+export default pool;
