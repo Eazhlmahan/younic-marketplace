@@ -1,6 +1,6 @@
 # Younic API (v1 backend)
 
-A real, runnable Express + SQLite backend implementing the full booking/escrow/negotiation
+A real, runnable Express + PostgreSQL backend implementing the full booking/escrow/negotiation
 state machine from the Younic tech spec. Tested end-to-end (see "What's verified" below).
 
 ## Run it
@@ -15,16 +15,21 @@ npm run dev    # starts on http://localhost:4000
 
 **Real and working:**
 - User signup/login with bcrypt password hashing + JWT auth
-- Phone and email verification via one-time codes — real generation, expiry (5 min), and
-  consumption logic; tier flips to `verified` only once both are confirmed (tested end-to-end,
-  including that a wrong code is correctly rejected)
+- Email verification via one-time codes — real generation, expiry (5 min), and consumption
+  logic. `verified` tier is granted once the email is confirmed (tested end-to-end, including
+  that a wrong code is correctly rejected).
+- Phone OTP verification exists in the code (same one-time-code mechanics as email) but is
+  currently **not required** for account verification. A phone number is accepted optionally
+  at signup and stored, but never gates the `verified` tier. This can be re-enabled later by
+  restoring the phone check in `recomputeTier()` in `src/routes/auth.js` (see the comment
+  there).
 - Full booking state machine: `pending → negotiating → confirmed → identity_unlocked → delivered → paid_out`
 - Negotiation with a hard 3-round cap, enforced server-side
 - Escrow hold → identity unlock gating (reveal endpoint 403s until escrow is paid)
 - Contact-info regex filter on all messages before identity unlock
 - Commission math (15%) computed and returned at payout
-- SQLite database with the full schema from the tech doc (users, bookings, escrow_transactions,
-  counter_offers, deliverables, ratings, subscriptions, messages)
+- PostgreSQL database with the full schema from the tech doc (users, bookings,
+  escrow_transactions, counter_offers, deliverables, ratings, subscriptions, messages)
 
 **Stubbed — clearly marked with `dev_note` in the API responses, swap these for production:**
 - `POST /auth/otp/send` (`{channel: 'phone'|'email'}`) — logs the code to the server console
@@ -44,6 +49,5 @@ See `src/routes/*.js` — each route file is small and documents its own behavio
 Main flow: `auth.js` → `profiles.js` (browse/discovery) → `bookings.js` (the core state machine).
 
 ## Database
-SQLite file at `src/db/younic.db`, created automatically from `schema.sql` on first run.
-Swap to Postgres for production — the schema is plain SQL and translates directly; only
-`better-sqlite3` calls in `db/index.js` would need to become a Postgres client (e.g. `pg` or Prisma).
+PostgreSQL, reached via `DATABASE_URL` (a `pg` Pool in `db/index.js`). Schema is created
+automatically on boot from `schema.sql` (idempotent `CREATE TABLE IF NOT EXISTS`).

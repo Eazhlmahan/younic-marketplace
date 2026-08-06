@@ -303,7 +303,7 @@ function screenSignup(){
       </div>
       <div class="field"><label>${state.authRole==='business'?'Business name':'Full name'}</label><input id="su-name" type="text" placeholder="Enter name"></div>
       <div class="field"><label>Email</label><input id="su-email" type="email" placeholder="you@example.com"></div>
-      <div class="field"><label>Mobile number</label><input id="su-phone" type="text" placeholder="+91 98765 43210"></div>
+      <div class="field"><label>Mobile number (optional)</label><input id="su-phone" type="text" placeholder="+91 98765 43210"></div>
       <div class="field"><label>Password</label><input id="su-password" type="password" placeholder="Create a password"></div>
       <button class="btn btn-primary btn-block" style="margin-top:6px;" onclick="doSignup()">Continue</button>
       <div class="sub" style="text-align:center;margin-top:14px;">Already have an account? <span style="color:var(--trust);cursor:pointer;" onclick="nav('login')">Log in</span></div>
@@ -325,12 +325,12 @@ function screenLogin(){
 }
 
 function screenOtp(){
-  const channel = state.otpChannel || 'phone';
+  const channel = state.otpChannel || 'email';
   const target = channel === 'phone' ? (state.phone || 'your number') : (state.currentUser && state.currentUser.email);
   const boxes = state.otp.map((v,i)=>`<input class="otp-box" maxlength="1" value="${v}" oninput="otpInput(${i},this.value)" id="otp-${i}">`).join('');
   return `
     <div class="auth-wrap">
-      <div class="eyebrow" style="text-align:center;">Step ${channel==='phone'?1:2} of 2</div>
+      <div class="eyebrow" style="text-align:center;">${channel==='phone'?'Optional verification':'Account verification'}</div>
       <h2 style="text-align:center;margin-bottom:6px;">Verify your ${channel==='phone'?'number':'email'}</h2>
       <div class="sub" style="text-align:center;">Code sent to ${target}. Check the server console log (dev mode).</div>
       <div class="otp-row" style="margin-top:20px;">${boxes}</div>
@@ -342,16 +342,15 @@ function screenOtp(){
 
 function screenVerify(){
   const u = state.currentUser || {};
-  const allDone = u.phone_verified && u.email_verified;
   return `
     <div class="eyebrow">Almost there</div>
-    <h2 style="margin-bottom:4px;">Account verification</h2>
-    <div class="sub">We confirm your phone and email are real and reachable.</div>
-    <div class="verify-item"><div class="verify-dot ${u.phone_verified?'done':''}">${u.phone_verified?'✓':''}</div><div class="verify-text"><div class="t">Phone number</div><div class="s">${u.phone_verified?'Verified':'Pending'}</div></div></div>
-    <div class="verify-item"><div class="verify-dot ${u.email_verified?'done':''}">${u.email_verified?'✓':''}</div><div class="verify-text"><div class="t">Email address</div><div class="s">${u.email_verified?'Verified':'Pending'}</div></div>
+    <h2 style="margin-bottom:4px;">Verify your email</h2>
+    <div class="sub">Confirming your email is real and reachable completes your verification. It only takes a minute.</div>
+    <div class="verify-item"><div class="verify-dot ${u.email_verified?'done':''}">${u.email_verified?'✓':''}</div><div class="verify-text"><div class="t">Email address</div><div class="s">${u.email_verified?'Verified':'Required'}</div></div>
       ${!u.email_verified ? `<button class="btn btn-sm" onclick="safe(async()=>{await sendOtp('email'); nav('otp',{otpChannel:'email', otp:['','','','']});})">Verify</button>` : ''}
     </div>
-    <button class="btn btn-primary btn-block" style="margin-top:20px;" onclick="nav('browse')">${allDone? 'Continue to app' : 'Skip for now'}</button>
+    <div class="verify-item"><div class="verify-dot">—</div><div class="verify-text"><div class="t">Phone (optional, not verified)</div><div class="s">Not required for verification</div></div></div>
+    <button class="btn btn-primary btn-block" style="margin-top:20px;" onclick="nav('browse')">${u.email_verified? 'Continue to app' : 'Skip for now'}</button>
   `;
 }
 
@@ -370,8 +369,8 @@ async function doSignup(){
     state.currentUser = data.user;
     state.phone = phone;
     toast('Account created');
-    await safe(()=>sendOtp('phone'));
-    nav('otp', { otpChannel:'phone', otp:['','','',''] });
+    await safe(()=>sendOtp('email'));
+    nav('otp', { otpChannel:'email', otp:['','','',''] });
   });
 }
 
@@ -924,8 +923,8 @@ function screenAccountTab(){
     <div class="eyebrow">Account</div>
     <h1 style="font-size:22px;">${esc(u.anon_id||'')}</h1>
     <div class="sub">${u.role==='creator'?'Creator':'Business'} &middot; tier ${esc(u.tier)}</div>
-    <div class="verify-item"><div class="verify-dot ${u.phone_verified?'done':''}">${u.phone_verified?'✓':''}</div><div class="verify-text"><div class="t">Phone verified</div></div></div>
     <div class="verify-item"><div class="verify-dot ${u.email_verified?'done':''}">${u.email_verified?'✓':''}</div><div class="verify-text"><div class="t">Email verified</div></div></div>
+    <div class="verify-item"><div class="verify-dot">—</div><div class="verify-text"><div class="t">Phone (optional, not verified)</div></div></div>
     ${profileEdit}
     <button class="btn btn-block" style="margin-top:20px;" onclick="logout()">Log out</button>
   `;

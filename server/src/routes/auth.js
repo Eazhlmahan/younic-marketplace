@@ -96,7 +96,10 @@ router.post('/otp/verify', requireAuth, async (req, res) => {
 async function recomputeTier(userId) {
   const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
   const u = rows[0];
-  const tier = (u.phone_verified && u.email_verified) ? 'verified' : 'unverified';
+  // Email confirmation is the sole requirement for 'verified' tier. Phone verification is
+  // optional — a user's number is stored at signup but never gates tier. To re-enable the
+  // stricter flow, change this back to (u.phone_verified && u.email_verified).
+  const tier = u.email_verified ? 'verified' : 'unverified';
   await db.query('UPDATE users SET tier = $1 WHERE id = $2', [tier, userId]);
 }
 
