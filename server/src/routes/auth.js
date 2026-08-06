@@ -105,7 +105,7 @@ async function recomputeTier(userId) {
 
 router.get('/me', requireAuth, async (req, res) => {
   const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
-  res.json({ user: publicUser(rows[0]) });
+  res.json({ user: await publicUser(rows[0]) });
 });
 
 async function publicUser(u) {
