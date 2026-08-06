@@ -39,7 +39,7 @@ router.post('/signup', async (req, res) => {
 
   const user = await db.query('SELECT * FROM users WHERE id = $1', [id]);
   const token = signToken(user.rows[0]);
-  res.status(201).json({ token, user: publicUser(user.rows[0]) });
+  res.status(201).json({ token, user: await publicUser(user.rows[0]) });
 });
 
 // POST /auth/login { email, password }
@@ -51,7 +51,7 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   const token = signToken(user);
-  res.json({ token, user: publicUser(user) });
+  res.json({ token, user: await publicUser(user) });
 });
 
 // POST /auth/otp/send { channel: 'phone' | 'email' }
