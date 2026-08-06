@@ -32,10 +32,10 @@ npm run dev    # starts on http://localhost:4000
   escrow_transactions, counter_offers, deliverables, ratings, subscriptions, messages)
 
 **Stubbed — clearly marked with `dev_note` in the API responses, swap these for production:**
-- `POST /auth/otp/send` (`{channel: 'phone'|'email'}`) — logs the code to the server console
-  instead of actually sending an SMS or email. Swap in MSG91/Twilio for SMS and
-  SendGrid/Postmark/SES for email — the code generation, 5-minute expiry, and single-use
-  consumption logic underneath is already correct and doesn't need to change.
+- `POST /auth/otp/send` — the **email** channel is delivered for real via Resend. The **phone**
+  channel still logs the code to the server console (no SMS provider wired yet); swap in
+  MSG91/Twilio when needed. The code generation, 5-minute expiry, and single-use consumption
+  logic underneath is already correct and doesn't need to change.
 - `POST /bookings/:id/escrow/pay` — instantly marks payment as held. Swap for real Razorpay Route
   or Cashfree Payouts order creation + webhook confirmation (the state transition logic — only
   unlock identity once the webhook confirms the hold — is already correct, you're replacing the
@@ -43,6 +43,15 @@ npm run dev    # starts on http://localhost:4000
 - `POST /bookings/:id/approve` payout — instantly marks as paid. Swap for a real payout API call.
   Commission math is already correct.
 - `POST /subscriptions` — instantly activates. Swap for real recurring billing via your gateway.
+
+## Required production config (environment variables)
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string (Railway auto-attaches from the Postgres addon) |
+| `JWT_SECRET` | Secret used to sign auth tokens |
+| `RESEND_API_KEY` | Resend API key for transactional email OTP delivery. **Without it, email OTPs fall back to console-only logging.** |
+| `RESEND_FROM` | *(optional)* Verified sender address, e.g. `Younic <no-reply@younic.app>`. Defaults to Resend's `onboarding@resend.dev` sandbox address, which only works until you verify your own domain in Resend. |
 
 ## API reference
 See `src/routes/*.js` — each route file is small and documents its own behavior inline.

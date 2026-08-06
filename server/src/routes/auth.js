@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
+import { Resend } from 'resend';
 import db from '../db/index.js';
 import { signToken, requireAuth } from '../lib/auth.js';
 
@@ -54,11 +55,28 @@ router.post('/login', async (req, res) => {
   res.json({ token, user: await publicUser(user) });
 });
 
+// Sends the verification email via Resend. Requires RESEND_API_KEY env var; the sender
+// address comes from RESEND_FROM (defaults to Resend's sandbox onboarding address, which you
+// must replace once you verify a real domain in Resend).
+async function deliverEmailOtp(email, code) {
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const from = process.env.RESEND_FROM || 'Younic <onboarding@resend.dev>';
+  const { error } = await resend.emails.send({
+    from,
+    to: [email],
+    subject: 'Your Younic verification code',
+    text: `Your Younic verification code is: ${code}`,
+    html: `<p>Your Younic verification code is: <strong>${code}</strong></p>`,
+  });
+  if (error) throw new Error(error.message);
+}
+
 // POST /auth/otp/send { channel: 'phone' | 'email' }
-// Simulated: logs the code to the server console instead of sending a real SMS/email.
-// Swap the console.log lines for a real SMS provider (MSG91, Twilio) and email provider
-// (SendGrid, Postmark, AWS SES) in production — the code-generation/expiry/consume logic
-// underneath is already correct and doesn't need to change.
+// Email is delivered for real via Resend when RESEND_API_KEY is set. The phone channel is
+// still simulated (console log) until a real SMS provider is wired up. The code-generation,
+// 5-minute expiry, and single-use consumption logic in otp_codes is unchanged. The dev
+// console.log is kept as a fallback/debug log alongside the real send so codes remain
+// visible in Railway's logs.
 router.post('/otp/send', requireAuth, async (req, res) => {
   const channel = req.body.channel === 'email' ? 'email' : 'phone';
   const code = String(Math.floor(1000 + Math.random() * 9000));
@@ -68,11 +86,25 @@ router.post('/otp/send', requireAuth, async (req, res) => {
     [id, req.user.id, channel, code, expires_at]);
 
   if (channel === 'email') {
-    console.log(`[DEV EMAIL OTP] user ${req.user.id} code: ${code}`); // replace with real email send
+    console.log(`[DEV EMAIL OTP] user ${req.user.id} code: ${code}`); // fallback/debug
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const { rows: userRows } = await db.query('SELECT email FROM users WHERE id = $1', [req.user.id]);
+        const email = userRows[0] && userRows[0].email;
+        if (!email) throw new Error('User has no email address');
+        await deliverEmailOtp(email, code);
+        console.log(`[EMAIL OTP sent via Resend] user ${req.user.id}`);
+      } catch (e) {
+        console.error(`[EMAIL OTP send FAILED] user ${req.user.id}:`, e.message);
+        return res.status(502).json({ error: "Couldn't send code, try again" });
+      }
+    } else {
+      console.warn('[EMAIL] RESEND_API_KEY not set — OTP only logged to console');
+    }
   } else {
-    console.log(`[DEV SMS OTP] user ${req.user.id} code: ${code}`); // replace with real SMS send
+    console.log(`[DEV SMS OTP] user ${req.user.id} code: ${code}`); // placeholder — wire real SMS here
   }
-  res.json({ sent: true, channel, dev_note: `Real deployments call a ${channel === 'email' ? 'transactional email' : 'SMS'} provider here instead of logging to console.` });
+  res.json({ sent: true, channel, dev_note: `Email is delivered via Resend. Phone channel ${process.env.RESEND_API_KEY ? '' : '(and email when RESEND_API_KEY is unset) '}is still logged to console.` });
 });
 
 // POST /auth/otp/verify { channel, code }
