@@ -55,18 +55,28 @@ router.post('/login', async (req, res) => {
   res.json({ token, user: await publicUser(user) });
 });
 
-// Sends the verification email via Resend. Requires RESEND_API_KEY env var; the sender
-// address comes from RESEND_FROM (defaults to Resend's sandbox onboarding address, which you
-// must replace once you verify a real domain in Resend).
-async function deliverEmailOtp(email, code) {
+// Sends the verification email via Resend. Requires RESEND_API_KEY env var.
+// Delivery mode is chosen by the send handler:
+//   - RESEND_FROM set (a domain verified in Resend) -> normal: the OTP goes to the real
+//     recipient's address.
+//   - No RESEND_FROM (no verified domain yet)       -> sandbox: Resend only allows emailing
+//     the account owner, so the OTP is sent to RESEND_TEST_RECIPIENT (the account owner's
+//     own address, e.g. eazhl2018@gmail.com) and the email body notes which user it's for.
+//     Replace RESEND_FROM + RESEND_TEST_RECIPIENT with a verified-domain sender and remove
+//     the sandbox handling once a domain is verified.
+async function deliverEmailOtp(email, code, sandboxTo = null) {
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.RESEND_FROM || 'Younic <onboarding@resend.dev>';
+  const to = sandboxTo || email;
+  const sandboxNotice = sandboxTo
+    ? '\n\n(Sandbox mode: no Resend domain verified yet, so this code was emailed to the account owner ' + sandboxTo + ' on behalf of ' + email + ' — set RESEND_FROM to a verified-domain address to send to real recipients.)'
+    : '';
   const { error } = await resend.emails.send({
     from,
-    to: [email],
+    to: [to],
     subject: 'Your Younic verification code',
-    text: `Your Younic verification code is: ${code}`,
-    html: `<p>Your Younic verification code is: <strong>${code}</strong></p>`,
+    text: `Your Younic verification code is: ${code}.${sandboxNotice}`,
+    html: `<p>Your Younic verification code is: <strong>${code}</strong>.</p>${sandboxNotice ? `<p style="font-size:12px;color:#666;">${sandboxNotice}</p>` : ''}`,
   });
   if (error) throw new Error(error.message);
 }
@@ -92,8 +102,13 @@ router.post('/otp/send', requireAuth, async (req, res) => {
         const { rows: userRows } = await db.query('SELECT email FROM users WHERE id = $1', [req.user.id]);
         const email = userRows[0] && userRows[0].email;
         if (!email) throw new Error('User has no email address');
-        await deliverEmailOtp(email, code);
-        console.log(`[EMAIL OTP sent via Resend] user ${req.user.id}`);
+        // Sandbox mode: without a verified Resend domain (RESEND_FROM) the provider only lets
+        // us email the account owner, so deliver there when RESEND_TEST_RECIPIENT is set.
+        const sandboxTo = !process.env.RESEND_FROM && process.env.RESEND_TEST_RECIPIENT
+          ? process.env.RESEND_TEST_RECIPIENT
+          : null;
+        await deliverEmailOtp(email, code, sandboxTo);
+        console.log(`[EMAIL OTP sent via Resend] user ${req.user.id}${sandboxTo ? ` (sandbox -> ${sandboxTo})` : ''}`);
       } catch (e) {
         console.error(`[EMAIL OTP send FAILED] user ${req.user.id}:`, e.message);
         return res.status(502).json({ error: "Couldn't send code, try again" });
@@ -104,7 +119,7 @@ router.post('/otp/send', requireAuth, async (req, res) => {
   } else {
     console.log(`[DEV SMS OTP] user ${req.user.id} code: ${code}`); // placeholder — wire real SMS here
   }
-  res.json({ sent: true, channel, dev_note: `Email is delivered via Resend. Phone channel ${process.env.RESEND_API_KEY ? '' : '(and email when RESEND_API_KEY is unset) '}is still logged to console.` });
+  res.json({ sent: true, channel, dev_note: `Email is delivered via Resend (${process.env.RESEND_FROM ? 'real sender' : process.env.RESEND_TEST_RECIPIENT ? 'sandbox -> account owner' : 'console-only'} mode). Phone channel still logs to console.` });
 });
 
 // POST /auth/otp/verify { channel, code }
